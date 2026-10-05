@@ -1,0 +1,7 @@
+{
+  "name": "@replyiq/templates",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "ReplyIQ prebuilt HTML/CSS templates (placeholder)"
+}
