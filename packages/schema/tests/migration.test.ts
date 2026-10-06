@@ -29,6 +29,7 @@ describe("Schema Migration Mechanism", () => {
       return {
         schemaVersion: 1,
         subdomain: raw["slug"],
+        template: "portfolio",
         metadata: {
           title: raw["name"],
           description: raw["about"],

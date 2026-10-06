@@ -7,8 +7,22 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       reporter: ["text", "json", "html"],
-      include: ["packages/schema/src/**/*.ts"],
-      exclude: ["packages/schema/src/**/index.ts", "packages/schema/src/**/types.ts"],
+      include: [
+        "packages/schema/src/**/*.ts",
+        "packages/templates/src/**/*.ts",
+        "packages/core/src/**/*.ts",
+        "apps/sites/src/**/*.ts",
+      ],
+      exclude: [
+        "packages/**/src/**/index.ts",
+        "packages/**/src/**/types.ts",
+        "packages/**/src/**/context.ts",
+        "packages/**/src/**/errors.ts",
+        "packages/**/src/**/interfaces.ts",
+        "packages/**/scripts/**",
+        "apps/**/scripts/**",
+        "**/*.d.ts",
+      ],
       thresholds: {
         lines: 90,
         functions: 90,

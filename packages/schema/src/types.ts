@@ -19,7 +19,7 @@ export type {
   FooterSection,
   FooterLink,
 } from "./sections/registry.js";
-export type { SiteMetadata, SiteContact, SiteDocument } from "./document.js";
+export type { SiteMetadata, SiteContact, SiteDocument, TemplateId } from "./document.js";
 export type {
   Operation,
   SetMetadataOperation,

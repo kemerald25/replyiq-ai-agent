@@ -10,6 +10,7 @@ Canonical `SiteDocument` schema, validation rules, AI edit operations, and migra
 2. **Deterministic Validation**: Every string, URL, image asset, section, and subdomain slug is strictly validated using Zod.
 3. **Immutability & Atomicity**: The `applyOperations` function never mutates the input document. If any single operation in a batch fails, the entire transaction is rolled back cleanly.
 4. **Single Domain Configuration**: The base domain for user sites is defined in `src/config.ts` (`BASE_DOMAIN = "replyiq.cv"`) and is never hardcoded.
+5. **Template Association**: `SiteDocument.template` selects a registered template identifier (defaults to `"portfolio"`). Rendering packages consume this field to map documents to audited static layouts.
 
 ---
 

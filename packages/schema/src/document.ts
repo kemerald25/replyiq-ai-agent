@@ -43,6 +43,10 @@ export const SiteContactSchema = z.object({
 });
 export type SiteContact = z.infer<typeof SiteContactSchema>;
 
+export const REGISTERED_TEMPLATES = ["portfolio"] as const;
+export type TemplateId = (typeof REGISTERED_TEMPLATES)[number];
+export const TemplateIdSchema = z.enum(REGISTERED_TEMPLATES).default("portfolio");
+
 /**
  * Complete canonical SiteDocument schema (Version 1).
  */
@@ -50,6 +54,7 @@ export const SiteDocumentSchema = z
   .object({
     schemaVersion: z.literal(CURRENT_SCHEMA_VERSION),
     subdomain: SubdomainSlugSchema,
+    template: TemplateIdSchema,
     metadata: SiteMetadataSchema,
     theme: ThemeSchema,
     contact: SiteContactSchema,

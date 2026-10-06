@@ -1,7 +1,22 @@
 {
   "name": "@replyiq/templates",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
-  "description": "ReplyIQ prebuilt HTML/CSS templates (placeholder)"
+  "description": "Deterministic, mobile-first static HTML/CSS templates for ReplyIQ",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "preview": "tsx scripts/dev-server.ts"
+  },
+  "dependencies": {
+    "@replyiq/schema": "*"
+  }
 }

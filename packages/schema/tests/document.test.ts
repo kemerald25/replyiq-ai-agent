@@ -5,6 +5,7 @@ import { CURRENT_SCHEMA_VERSION, DEFAULT_LANGUAGE, DEFAULT_LOCALE } from "../src
 export const validMinimalDoc: SiteDocument = {
   schemaVersion: CURRENT_SCHEMA_VERSION,
   subdomain: "chidi-bakery",
+  template: "portfolio",
   metadata: {
     title: "Chidi Bakery Lagos",
     description: "Artisanal sourdough and pastries freshly baked in Yaba, Lagos.",
@@ -36,8 +37,23 @@ describe("SiteDocumentSchema", () => {
     expect(result.valid).toBe(true);
     if (result.valid) {
       expect(result.document.subdomain).toBe("chidi-bakery");
+      expect(result.document.template).toBe("portfolio");
       expect(result.document.schemaVersion).toBe(1);
     }
+  });
+
+  it("defaults template to 'portfolio' when omitted", () => {
+    const { template: _, ...docWithoutTemplate } = validMinimalDoc;
+    const parsed = SiteDocumentSchema.safeParse(docWithoutTemplate);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.template).toBe("portfolio");
+    }
+  });
+
+  it("rejects unregistered template names", () => {
+    const badTemplate = { ...validMinimalDoc, template: "unregistered_theme" };
+    expect(SiteDocumentSchema.safeParse(badTemplate).success).toBe(false);
   });
 
   it("validates a document containing all 8 standard section types", () => {

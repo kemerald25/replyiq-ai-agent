@@ -17,16 +17,22 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc -b",
+    "preview": "npm run --workspace=@replyiq/templates preview",
+    "sites:dev": "npm run --workspace=@replyiq/sites dev",
+    "sites:seed": "npm run --workspace=@replyiq/sites seed",
     "format": "prettier --write \"**/*.{ts,js,json,md}\"",
     "format:check": "prettier --check \"**/*.{ts,js,json,md}\""
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261005.1",
     "@eslint/js": "^9.21.0",
     "@vitest/coverage-v8": "^3.0.7",
     "eslint": "^9.21.0",
     "prettier": "^3.5.2",
+    "tsx": "^4.23.15",
     "typescript": "^5.7.3",
     "typescript-eslint": "^8.25.0",
-    "vitest": "^3.0.7"
+    "vitest": "^3.0.7",
+    "wrangler": "^4.147.0"
   }
 }

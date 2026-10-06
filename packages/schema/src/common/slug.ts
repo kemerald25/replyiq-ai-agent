@@ -26,6 +26,7 @@ export const RESERVED_SLUGS: ReadonlySet<string> = new Set([
   "onboard",
   "partners",
   "portal",
+  "preview",
   "privacy",
   "replyiq",
   "root",

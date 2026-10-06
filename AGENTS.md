@@ -43,7 +43,29 @@ Sites are served on subdomains of the base domain (e.g. `business.replyiq.cv`). 
 
 - `apps/`: Future deployable applications (WhatsApp webhook listener, site builder/publisher).
 - `packages/schema`: The source of truth for the `SiteDocument` schema, field limits, security sanitization, phone normalization, subdomain validation, typed edit operations, and schema migrations.
-- `packages/templates`: Prebuilt, mobile-optimized HTML/CSS templates (placeholder in v1 foundation).
+- `packages/templates`: Prebuilt, mobile-optimized HTML/CSS templates, pure deterministic rendering engine (`renderSite`), and template registry.
+
+---
+
+## Template Engine & Rendering Rules
+
+1. **Pure & Portable Function**:
+   - `renderSite(document, context)` must be a pure function with no I/O, running identically on Node and Cloudflare Workers.
+   - Do NOT include or rely on the DOM library (`window`, `document` do not exist).
+2. **Zero Client JavaScript**:
+   - Rendered sites must contain NO client-side JavaScript (`<script>` tags, inline event handlers, or pseudo-protocols are forbidden).
+3. **Inlined Self-Contained CSS**:
+   - Styling is strictly inlined in `<style>` in `<head>`. Never reference external stylesheets.
+   - Theme palette tokens map to CSS custom properties with strict hex re-validation at render time.
+4. **Exhaustive Section Handling**:
+   - The section dispatcher (`renderSection`) uses an exhaustive switch with `assertNever(section)` so adding a section type to the schema causes a TypeScript compile error until a renderer is implemented.
+5. **Adding a Template**:
+   - Add template ID to `REGISTERED_TEMPLATES` in `packages/schema/src/document.ts`.
+   - Create layout and styles in `packages/templates/src/templates/<template-name>/`.
+   - Register in `packages/templates/src/templates/registry.ts`.
+6. **Adding a Section Renderer**:
+   - Create renderer in `packages/templates/src/sections/<section-type>.ts`.
+   - Add `case` to `renderSection` in `packages/templates/src/sections/registry.ts`.
 
 ---
 

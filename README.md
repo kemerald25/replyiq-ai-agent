@@ -78,14 +78,14 @@ npm install
 
 From the repository root, run:
 
-| Command | Description |
-| :--- | :--- |
-| `npm run build` | Compiles all packages across the workspace via TypeScript |
-| `npm run test` | Runs all test suites with Vitest and generates v8 coverage reports |
-| `npm run lint` | Lints all TypeScript and JavaScript files using ESLint flat config |
-| `npm run typecheck` | Performs workspace-wide typechecking across project references (`tsc -b`) |
-| `npm run format:check` | Verifies code formatting with Prettier |
-| `npm run format` | Auto-formats the codebase with Prettier |
+| Command                | Description                                                               |
+| :--------------------- | :------------------------------------------------------------------------ |
+| `npm run build`        | Compiles all packages across the workspace via TypeScript                 |
+| `npm run test`         | Runs all test suites with Vitest and generates v8 coverage reports        |
+| `npm run lint`         | Lints all TypeScript and JavaScript files using ESLint flat config        |
+| `npm run typecheck`    | Performs workspace-wide typechecking across project references (`tsc -b`) |
+| `npm run format:check` | Verifies code formatting with Prettier                                    |
+| `npm run format`       | Auto-formats the codebase with Prettier                                   |
 
 ---
 
