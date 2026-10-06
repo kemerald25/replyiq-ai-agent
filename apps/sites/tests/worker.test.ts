@@ -65,6 +65,22 @@ class MockD1 {
 
         return null;
       },
+      async all<T = any>(): Promise<{ results: T[] }> {
+        if (sql.includes("FROM projects WHERE status = 'live'")) {
+          const list: any[] = [];
+          for (const proj of self.projects.values()) {
+            if (proj.status === "live" && proj.deleted_at === null) {
+              list.push({
+                slug: proj.slug,
+                name: proj.name || proj.slug,
+                template: proj.template || "site",
+              });
+            }
+          }
+          return { results: list as T[] };
+        }
+        return { results: [] };
+      },
     };
   }
 }
@@ -127,6 +143,107 @@ describe("Cloudflare Sites Worker", () => {
       const res = await worker.fetch(req, env);
       expect(res.status).toBe(400);
       expect(await res.text()).toContain("Invalid Host: Direct IP access forbidden");
+    });
+
+    it("rejects 127.0.0.1 and ::1 loopback IPs with 400 Bad Request in production", async () => {
+      const prodEnv: Env = {
+        ...env,
+        ENVIRONMENT: "production",
+      };
+
+      const reqV4 = new Request("http://127.0.0.1/");
+      const resV4 = await worker.fetch(reqV4, prodEnv);
+      expect(resV4.status).toBe(400);
+      expect(await resV4.text()).toContain("Invalid Host: Direct IP access forbidden");
+
+      const reqV6 = new Request("http://[::1]/");
+      const resV6 = await worker.fetch(reqV6, prodEnv);
+      expect(resV6.status).toBe(400);
+      expect(await resV6.text()).toContain("Invalid Host: Direct IP access forbidden");
+    });
+
+    it("fails closed: rejects 127.0.0.1 when ENVIRONMENT is undefined or missing", async () => {
+      const undefinedEnv: Env = {
+        ...env,
+        ENVIRONMENT: undefined,
+      };
+
+      const req = new Request("http://127.0.0.1/");
+      const res = await worker.fetch(req, undefinedEnv);
+      expect(res.status).toBe(400);
+      expect(await res.text()).toContain("Invalid Host: Direct IP access forbidden");
+    });
+
+    it("never serves directory page on apex in production and ignores ?site=", async () => {
+      const fetchSpy = vi.fn().mockImplementation(() => Promise.resolve(new Response("Apex Marketing", { status: 200 })));
+      vi.stubGlobal("fetch", fetchSpy);
+
+      const prodEnv: Env = {
+        ...env,
+        ENVIRONMENT: "production",
+      };
+
+      // 1. Apex root request
+      const reqApex = new Request("https://replyiq.cv/");
+      const resApex = await worker.fetch(reqApex, prodEnv);
+      expect(fetchSpy).toHaveBeenCalled();
+      const textApex = await resApex.text();
+      expect(textApex).toBe("Apex Marketing");
+      expect(textApex).not.toContain("Local Development Server");
+
+      // 2. Apex request with ?site= attempted override
+      const reqQuery = new Request("https://replyiq.cv/?site=amaka-luxe");
+      const resQuery = await worker.fetch(reqQuery, prodEnv);
+      expect(fetchSpy).toHaveBeenCalledTimes(2);
+      const textQuery = await resQuery.text();
+      expect(textQuery).toBe("Apex Marketing");
+      expect(textQuery).not.toContain("Local Development Server");
+
+      vi.unstubAllGlobals();
+    });
+
+    it("serves local directory page and ?site= only when ENVIRONMENT=development", async () => {
+      mockDb.projects.set("p1", {
+        id: "p1",
+        slug: "amaka-luxe",
+        name: "Amaka Luxury Hair",
+        template: "salon",
+        status: "live",
+        published_version: 1,
+        suspended_reason: null,
+        deleted_at: null,
+      });
+      mockSitesBucket.objects.set("sites/p1/1.html", {
+        data: "<html><body>Amaka Salon Page</body></html>",
+        contentType: "text/html; charset=utf-8",
+      });
+
+      const devEnv: Env = {
+        ...env,
+        BASE_DOMAIN: "localhost",
+        ENVIRONMENT: "development",
+      };
+
+      // 1. Loopback IP 127.0.0.1 serves directory page
+      const reqV4 = new Request("http://127.0.0.1:8787/");
+      const resV4 = await worker.fetch(reqV4, devEnv);
+      expect(resV4.status).toBe(200);
+      const htmlV4 = await resV4.text();
+      expect(htmlV4).toContain("Local Development Server");
+      expect(htmlV4).toContain("amaka-luxe.localhost:8787");
+
+      // 2. Loopback IPv6 ::1 serves directory page
+      const reqV6 = new Request("http://[::1]:8787/");
+      const resV6 = await worker.fetch(reqV6, devEnv);
+      expect(resV6.status).toBe(200);
+      const htmlV6 = await resV6.text();
+      expect(htmlV6).toContain("Local Development Server");
+
+      // 3. ?site= override works in development
+      const reqQuery = new Request("http://127.0.0.1:8787/?site=amaka-luxe");
+      const resQuery = await worker.fetch(reqQuery, devEnv);
+      expect(resQuery.status).toBe(200);
+      expect(await resQuery.text()).toContain("Amaka Salon Page");
     });
 
     it("rejects nested subdomains with 404", async () => {
@@ -346,6 +463,7 @@ describe("Cloudflare Sites Worker", () => {
       });
       mockSitesBucket.objects.set("sites/p_sec/1.html", {
         data: "<html><body>Security Test</body></html>",
+        contentType: "text/html; charset=utf-8",
       });
 
       const req = new Request("https://sec-site.replyiq.cv/");
@@ -367,6 +485,7 @@ describe("Cloudflare Sites Worker", () => {
 
   describe("Staging Override Support", () => {
     it("selects site via query parameter when staging override is enabled", async () => {
+      env.ENVIRONMENT = "staging";
       env.STAGING_OVERRIDE_ENABLED = "true";
       mockDb.projects.set("p_stage", {
         id: "p_stage",
@@ -377,6 +496,7 @@ describe("Cloudflare Sites Worker", () => {
       });
       mockSitesBucket.objects.set("sites/p_stage/1.html", {
         data: "<html><body>Staging Amaka Luxe</body></html>",
+        contentType: "text/html; charset=utf-8",
       });
 
       const req = new Request("https://demo.workers.dev/?site=amaka-luxe");
@@ -386,6 +506,7 @@ describe("Cloudflare Sites Worker", () => {
     });
 
     it("selects site via path prefix when staging override is enabled", async () => {
+      env.ENVIRONMENT = "staging";
       env.STAGING_OVERRIDE_ENABLED = "true";
       mockDb.projects.set("p_stage", {
         id: "p_stage",
@@ -396,6 +517,7 @@ describe("Cloudflare Sites Worker", () => {
       });
       mockSitesBucket.objects.set("sites/p_stage/1.html", {
         data: "<html><body>Staging Amaka Luxe Path</body></html>",
+        contentType: "text/html; charset=utf-8",
       });
 
       const req = new Request("https://demo.workers.dev/site/amaka-luxe");
@@ -405,6 +527,7 @@ describe("Cloudflare Sites Worker", () => {
     });
 
     it("does not enable staging overrides when flag is disabled", async () => {
+      env.ENVIRONMENT = "staging";
       env.STAGING_OVERRIDE_ENABLED = "false";
       const fetchSpy = vi.fn().mockResolvedValue(new Response("Apex Passthrough", { status: 200 }));
       vi.stubGlobal("fetch", fetchSpy);

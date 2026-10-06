@@ -13,6 +13,7 @@ export type HostRoute =
 export interface ParseHostOptions {
   baseDomain: string;
   bypassHosts?: string[];
+  allowLoopbackIp?: boolean;
   stagingOverrideEnabled?: boolean;
 }
 
@@ -37,7 +38,7 @@ function isIpAddress(hostname: string): boolean {
  * Security & Accuracy Rules:
  * 1. Derives hostname strictly from the request URL (never from X-Forwarded-Host).
  * 2. Normalizes to lowercase and trims trailing dots.
- * 3. Rejects IP addresses with invalid_ip.
+ * 3. Rejects IP addresses with invalid_ip (loopback allowed ONLY if allowLoopbackIp is explicitly true).
  * 4. Identifies bypass hosts (apex, www, marketing) for untouched passthrough.
  * 5. Identifies dedicated cdn and preview hosts.
  * 6. Rejects nested subdomains (e.g. a.b.replyiq.cv).
@@ -59,9 +60,10 @@ export function parseHost(requestUrl: string, options: ParseHostOptions): HostRo
 
   const baseDomain = options.baseDomain.toLowerCase().replace(/\.+$/, "");
 
-  // 1. Rejection of IP addresses (allow loopback during local development)
+  // 1. Rejection of IP addresses (loopback allowed ONLY when explicit flag is enabled)
   if (isIpAddress(hostname)) {
-    if (baseDomain === "localhost" && (hostname === "127.0.0.1" || hostname === "::1")) {
+    const rawIp = hostname.replace(/^\[|\]$/g, "");
+    if (options.allowLoopbackIp && (rawIp === "127.0.0.1" || rawIp === "::1")) {
       hostname = "localhost";
     } else {
       return { type: "invalid_ip" };

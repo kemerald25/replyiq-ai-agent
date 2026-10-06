@@ -18,6 +18,7 @@ export interface Env {
   ASSETS_BUCKET: R2Bucket;
   BASE_DOMAIN?: string;
   BYPASS_HOSTS?: string;
+  ENVIRONMENT?: string;
   STAGING_OVERRIDE_ENABLED?: string;
 }
 
@@ -43,22 +44,42 @@ export default {
     const bypassHosts = env.BYPASS_HOSTS
       ? env.BYPASS_HOSTS.split(",").map((h) => h.trim())
       : [];
-    const stagingOverrideEnabled = env.STAGING_OVERRIDE_ENABLED === "true";
+
+    // Safety: Development features must fail closed by default.
+    // Loopback IP, local directory landing page, and ?site= override are only enabled
+    // when explicitly running with ENVIRONMENT="development".
+    const isDevelopment = env.ENVIRONMENT === "development";
+    const allowLoopbackIp = isDevelopment && baseDomain === "localhost";
+    const stagingOverrideEnabled =
+      isDevelopment ||
+      (env.ENVIRONMENT === "staging" && env.STAGING_OVERRIDE_ENABLED === "true");
 
     const parsedUrl = new URL(request.url);
     const hostRoute = parseHost(request.url, {
       baseDomain,
       bypassHosts,
+      allowLoopbackIp,
       stagingOverrideEnabled,
     });
 
     // 1. Passthrough for bypass hosts (apex, www, app portal, marketing origin)
     if (hostRoute.type === "bypass") {
-      if (baseDomain === "localhost") {
-        return new Response(renderLocalDevLandingPage(baseDomain), {
+      if (isDevelopment && baseDomain === "localhost") {
+        let liveProjects: Array<{ slug: string; name: string; template: string }> = [];
+        try {
+          const res = await env.DB.prepare(
+            "SELECT slug, name, template FROM projects WHERE status = 'live' AND deleted_at IS NULL ORDER BY created_at ASC"
+          ).all<{ slug: string; name: string; template: string }>();
+          liveProjects = res.results || [];
+        } catch {
+          // Empty or unmigrated local database
+        }
+
+        return new Response(renderLocalDevLandingPage(baseDomain, liveProjects), {
           status: 200,
           headers: {
             "Content-Type": "text/html; charset=utf-8",
+            "Cache-Control": "no-store",
           },
         });
       }

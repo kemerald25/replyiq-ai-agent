@@ -200,7 +200,24 @@ export function renderSuspendedPage(baseDomain: string, reason?: string | null):
 </html>`;
 }
 
-export function renderLocalDevLandingPage(_baseDomain: string): string {
+export function renderLocalDevLandingPage(
+  baseDomain: string,
+  projects: Array<{ slug: string; name: string; template: string }> = []
+): string {
+  const safeBase = escapeHtml(baseDomain);
+  const itemsHtml =
+    projects.length > 0
+      ? projects
+          .map(
+            (p) => `
+      <li>
+        <a href="http://${escapeHtml(p.slug)}.${safeBase}:8787">${escapeHtml(p.slug)}.${safeBase}:8787</a>
+        <span class="tag">${escapeHtml(p.template || "site")}</span>
+      </li>`
+          )
+          .join("")
+      : `<li><span style="color: #94a3b8;">No live sites in local D1. Run: <code>npm run sites:seed</code></span></li>`;
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -297,31 +314,12 @@ export function renderLocalDevLandingPage(_baseDomain: string): string {
   <div class="container">
     <div class="badge">Local Development Server</div>
     <h1>⚡ ReplyIQ Sites Worker</h1>
-    <p>Sites are delivered on subdomains. Click any seeded sample site below:</p>
+    <p>Sites in local D1 database. Click any live site below:</p>
     <ul>
-      <li>
-        <a href="http://amaka-luxe.localhost:8787">amaka-luxe.localhost:8787</a>
-        <span class="tag">Salon</span>
-      </li>
-      <li>
-        <a href="http://tunde-design.localhost:8787">tunde-design.localhost:8787</a>
-        <span class="tag">Portfolio</span>
-      </li>
-      <li>
-        <a href="http://kola-bespoke.localhost:8787">kola-bespoke.localhost:8787</a>
-        <span class="tag">Tailor</span>
-      </li>
-      <li>
-        <a href="http://chidi-bakery.localhost:8787">chidi-bakery.localhost:8787</a>
-        <span class="tag">Minimal</span>
-      </li>
-      <li>
-        <a href="http://stress-max-business.localhost:8787">stress-max-business.localhost:8787</a>
-        <span class="tag">Stress (Max)</span>
-      </li>
+      ${itemsHtml}
     </ul>
     <div class="footer">
-      Tip: In local dev, query override also works: <code>?site=amaka-luxe</code>
+      Tip: In local dev, query override also works: <code>?site=&lt;slug&gt;</code>
     </div>
   </div>
 </body>

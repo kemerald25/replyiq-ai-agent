@@ -1,5 +1,5 @@
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
+  "$schema": "../../node_modules/wrangler/config-schema.json",
   "name": "replyiq-sites",
   "main": "src/index.ts",
   "compatibility_date": "2024-04-05",
@@ -7,6 +7,7 @@
   "vars": {
     "BASE_DOMAIN": "localhost",
     "BYPASS_HOSTS": "replyiq.cv,www.replyiq.cv,app.replyiq.cv",
+    "ENVIRONMENT": "development",
     "STAGING_OVERRIDE_ENABLED": "true"
   },
   "d1_databases": [

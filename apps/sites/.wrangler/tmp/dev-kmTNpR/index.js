@@ -5,7 +5,7 @@ var __export = (target, all) => {
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
-// .wrangler/tmp/bundle-9vt6UO/checked-fetch.js
+// .wrangler/tmp/bundle-SI07VK/checked-fetch.js
 var urls = /* @__PURE__ */ new Set();
 function checkURL(request, init) {
   const url = request instanceof URL ? request : new URL(
@@ -6290,7 +6290,8 @@ function parseHost(requestUrl, options) {
   }
   const baseDomain = options.baseDomain.toLowerCase().replace(/\.+$/, "");
   if (isIpAddress(hostname)) {
-    if (baseDomain === "localhost" && (hostname === "127.0.0.1" || hostname === "::1")) {
+    const rawIp = hostname.replace(/^\[|\]$/g, "");
+    if (options.allowLoopbackIp && (rawIp === "127.0.0.1" || rawIp === "::1")) {
       hostname = "localhost";
     } else {
       return { type: "invalid_ip" };
@@ -6583,7 +6584,15 @@ function renderSuspendedPage(baseDomain, reason) {
 </html>`;
 }
 __name(renderSuspendedPage, "renderSuspendedPage");
-function renderLocalDevLandingPage(_baseDomain) {
+function renderLocalDevLandingPage(baseDomain, projects = []) {
+  const safeBase = escapeHtml2(baseDomain);
+  const itemsHtml = projects.length > 0 ? projects.map(
+    (p) => `
+      <li>
+        <a href="http://${escapeHtml2(p.slug)}.${safeBase}:8787">${escapeHtml2(p.slug)}.${safeBase}:8787</a>
+        <span class="tag">${escapeHtml2(p.template || "site")}</span>
+      </li>`
+  ).join("") : `<li><span style="color: #94a3b8;">No live sites in local D1. Run: <code>npm run sites:seed</code></span></li>`;
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -6680,31 +6689,12 @@ function renderLocalDevLandingPage(_baseDomain) {
   <div class="container">
     <div class="badge">Local Development Server</div>
     <h1>\u26A1 ReplyIQ Sites Worker</h1>
-    <p>Sites are delivered on subdomains. Click any seeded sample site below:</p>
+    <p>Sites in local D1 database. Click any live site below:</p>
     <ul>
-      <li>
-        <a href="http://amaka-luxe.localhost:8787">amaka-luxe.localhost:8787</a>
-        <span class="tag">Salon</span>
-      </li>
-      <li>
-        <a href="http://tunde-design.localhost:8787">tunde-design.localhost:8787</a>
-        <span class="tag">Portfolio</span>
-      </li>
-      <li>
-        <a href="http://kola-bespoke.localhost:8787">kola-bespoke.localhost:8787</a>
-        <span class="tag">Tailor</span>
-      </li>
-      <li>
-        <a href="http://chidi-bakery.localhost:8787">chidi-bakery.localhost:8787</a>
-        <span class="tag">Minimal</span>
-      </li>
-      <li>
-        <a href="http://stress-max-business.localhost:8787">stress-max-business.localhost:8787</a>
-        <span class="tag">Stress (Max)</span>
-      </li>
+      ${itemsHtml}
     </ul>
     <div class="footer">
-      Tip: In local dev, query override also works: <code>?site=amaka-luxe</code>
+      Tip: In local dev, query override also works: <code>?site=&lt;slug&gt;</code>
     </div>
   </div>
 </body>
@@ -6752,19 +6742,31 @@ var src_default = {
   async fetch(request, env, ctx) {
     const baseDomain = (env.BASE_DOMAIN || "localhost").toLowerCase().replace(/\.+$/, "");
     const bypassHosts = env.BYPASS_HOSTS ? env.BYPASS_HOSTS.split(",").map((h) => h.trim()) : [];
-    const stagingOverrideEnabled = env.STAGING_OVERRIDE_ENABLED === "true";
+    const isDevelopment = env.ENVIRONMENT === "development";
+    const allowLoopbackIp = isDevelopment && baseDomain === "localhost";
+    const stagingOverrideEnabled = isDevelopment || env.ENVIRONMENT === "staging" && env.STAGING_OVERRIDE_ENABLED === "true";
     const parsedUrl = new URL(request.url);
     const hostRoute = parseHost(request.url, {
       baseDomain,
       bypassHosts,
+      allowLoopbackIp,
       stagingOverrideEnabled
     });
     if (hostRoute.type === "bypass") {
-      if (baseDomain === "localhost") {
-        return new Response(renderLocalDevLandingPage(baseDomain), {
+      if (isDevelopment && baseDomain === "localhost") {
+        let liveProjects = [];
+        try {
+          const res = await env.DB.prepare(
+            "SELECT slug, name, template FROM projects WHERE status = 'live' AND deleted_at IS NULL ORDER BY created_at ASC"
+          ).all();
+          liveProjects = res.results || [];
+        } catch {
+        }
+        return new Response(renderLocalDevLandingPage(baseDomain, liveProjects), {
           status: 200,
           headers: {
-            "Content-Type": "text/html; charset=utf-8"
+            "Content-Type": "text/html; charset=utf-8",
+            "Cache-Control": "no-store"
           }
         });
       }
@@ -7076,7 +7078,7 @@ var jsonError = /* @__PURE__ */ __name(async (request, env, _ctx, middlewareCtx)
 }, "jsonError");
 var middleware_miniflare3_json_error_default = jsonError;
 
-// .wrangler/tmp/bundle-9vt6UO/middleware-insertion-facade.js
+// .wrangler/tmp/bundle-SI07VK/middleware-insertion-facade.js
 var __INTERNAL_WRANGLER_MIDDLEWARE__ = [
   middleware_ensure_req_body_drained_default,
   middleware_miniflare3_json_error_default
@@ -7108,7 +7110,7 @@ function __facade_invoke__(request, env, ctx, dispatch, finalMiddleware) {
 }
 __name(__facade_invoke__, "__facade_invoke__");
 
-// .wrangler/tmp/bundle-9vt6UO/middleware-loader.entry.ts
+// .wrangler/tmp/bundle-SI07VK/middleware-loader.entry.ts
 var __Facade_ScheduledController__ = class ___Facade_ScheduledController__ {
   constructor(scheduledTime, cron, noRetry) {
     this.scheduledTime = scheduledTime;
