@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
   InMemoryOwnerRepository,
   InMemoryProjectRepository,
@@ -232,5 +232,119 @@ describe("VersionService & Pruning Policy", () => {
       expect(await versionRepo.get(PROJECT_ID, 4)).toBeNull();
       expect(await versionRepo.get(PROJECT_ID, 6)).toBeNull();
     });
+
+    it("returns 0 when total versions is below the trigger threshold (55)", async () => {
+      const deleted = await versionService.pruneVersionsBestEffort(PROJECT_ID, null, 10);
+      expect(deleted).toBe(0);
+    });
+
+    it("returns 0 when all prune candidates are protected", async () => {
+      // 56 versions
+      for (let i = 1; i <= 55; i++) {
+        await versionRepo.createNextVersion(
+          PROJECT_ID,
+          OWNER_ID,
+          i,
+          { ...baseDoc },
+          "user"
+        );
+      }
+      // Candidates are 1..6. Protect all 6 with active preview tokens!
+      for (let v = 1; v <= 6; v++) {
+        await previewRepo.createToken(`tok_${v}`, PROJECT_ID, v, 3600);
+      }
+      const deleted = await versionService.pruneVersionsBestEffort(PROJECT_ID, null, 56);
+      expect(deleted).toBe(0);
+    });
+
+    it("respects the batch size limit (20) during pruning", async () => {
+      // Create 80 versions (1..80) -> candidates 1..30
+      for (let i = 1; i <= 79; i++) {
+        await versionRepo.createNextVersion(
+          PROJECT_ID,
+          OWNER_ID,
+          i,
+          { ...baseDoc },
+          "user"
+        );
+      }
+      const deleted = await versionService.pruneVersionsBestEffort(PROJECT_ID, null, 80);
+      // Even though 30 versions are eligible, batch size caps deletions at 20
+      expect(deleted).toBe(20);
+    });
+  });
+
+  describe("Validation & Error Edge Cases", () => {
+    it("throws PublishValidationError when document fails schema validation", async () => {
+      await expect(
+        versionService.createVersion({
+          projectId: PROJECT_ID,
+          ownerId: OWNER_ID,
+          expectedVersion: 1,
+          document: { ...baseDoc, schemaVersion: 999 as any },
+          authorType: "user",
+        })
+      ).rejects.toThrow();
+    });
+
+    it("throws NotFoundError when project does not exist during createVersion", async () => {
+      await expect(
+        versionService.createVersion({
+          projectId: "non_existent_project",
+          ownerId: OWNER_ID,
+          expectedVersion: 1,
+          document: baseDoc,
+          authorType: "user",
+        })
+      ).rejects.toThrow();
+    });
+
+    it("throws NotFoundError when project does not exist during getVersion or listVersions", async () => {
+      await expect(
+        versionService.getVersion("unknown", OWNER_ID, 1)
+      ).rejects.toThrow();
+
+      await expect(
+        versionService.listVersions("unknown", OWNER_ID)
+      ).rejects.toThrow();
+    });
+
+    it("throws Error when undoing a project at version 1", async () => {
+      await expect(
+        versionService.undo(PROJECT_ID, OWNER_ID)
+      ).rejects.toThrow("Cannot undo: project is at version 1");
+    });
+
+    it("throws NotFoundError when project does not exist during undo or restore", async () => {
+      await expect(
+        versionService.undo("unknown", OWNER_ID)
+      ).rejects.toThrow();
+
+      await expect(
+        versionService.restore("unknown", OWNER_ID, 1)
+      ).rejects.toThrow();
+    });
+
+    it("throws NotFoundError when historical target version does not exist during restore", async () => {
+      await expect(
+        versionService.restore(PROJECT_ID, OWNER_ID, 999)
+      ).rejects.toThrow();
+    });
+
+    it("throws NotFoundError when previous version is missing during undo", async () => {
+      // Create project with currentVersion = 3, but delete version 2 from repo
+      await projectRepo.updateStatus(PROJECT_ID, OWNER_ID, "draft", null);
+      await versionRepo.createNextVersion(PROJECT_ID, OWNER_ID, 1, baseDoc, "user");
+      await versionRepo.createNextVersion(PROJECT_ID, OWNER_ID, 2, baseDoc, "user");
+      await versionRepo.deleteVersions(PROJECT_ID, [2]);
+      await expect(versionService.undo(PROJECT_ID, OWNER_ID)).rejects.toThrow();
+    });
+
+    it("returns 0 in pruneVersionsBestEffort when totalCount <= 55 even if currentVersion > 55", async () => {
+      vi.spyOn(versionRepo, "countVersions").mockResolvedValueOnce(50);
+      const deleted = await versionService.pruneVersionsBestEffort(PROJECT_ID, null, 60);
+      expect(deleted).toBe(0);
+    });
   });
 });
+

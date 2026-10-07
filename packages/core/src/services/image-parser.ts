@@ -3,7 +3,7 @@ import { AssetValidationError } from "../domain/errors.js";
 
 export const MAX_ASSET_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
 export const MAX_IMAGE_DIMENSION = 4096; // 4096 px
-export const MAX_TOTAL_PIXELS = 16_777_216; // 16 MP (4096 x 4096)
+export const MAX_TOTAL_PIXELS = 12_582_912; // 12 MP (e.g. 4096 x 3072)
 
 export interface ParsedImageInfo {
   mimeType: AssetMimeType;

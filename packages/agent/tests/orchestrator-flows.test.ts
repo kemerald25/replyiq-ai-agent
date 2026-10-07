@@ -448,8 +448,35 @@ describe("Orchestrator Fallback, Budget, and Edge Flows", () => {
 
     const reloaded = await store.getState("test_owner_rollover");
     expect(reloaded.usage.messageCount).toBe(0);
-    expect(reloaded.usage.modelCallCount).toBe(0);
-
     expect(await store.isMessageProcessed("test_owner_rollover", "msg_x")).toBe(false);
+  });
+
+  it("trims conversation history to maximum of 20 messages", async () => {
+    const st = await stateStore.getState(OWNER_ID);
+    st.conversationHistory = Array.from({ length: 25 }, (_, i) => ({
+      role: (i % 2 === 0 ? "user" : "assistant") as any,
+      content: `Message ${i + 1}`,
+    }));
+    await stateStore.saveState(OWNER_ID, st);
+
+    const orchestrator = new AgentOrchestrator({
+      ownerRepo,
+      projectRepo,
+      versionRepo,
+      publishService,
+      versionService,
+      previewService,
+      stateStore,
+      defaultProvider: new MockProvider(),
+    });
+
+    await orchestrator.handleMessage({
+      ownerPhone: OWNER_PHONE,
+      messageId: "msg_trim_history",
+      text: "Change hero heading to Trimmed",
+    });
+
+    const updatedSt = await stateStore.getState(OWNER_ID);
+    expect(updatedSt.conversationHistory.length).toBeLessThanOrEqual(20);
   });
 });

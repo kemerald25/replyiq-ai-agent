@@ -1,7 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 
-export class GlobalCounterDO extends DurableObject {
-  constructor(ctx: DurableObjectState, env: any) {
+export class GlobalCounterDO extends DurableObject<Record<string, unknown>> {
+  constructor(ctx: DurableObjectState, env: Record<string, unknown>) {
     super(ctx, env);
     this.ctx.storage.sql.exec(`
       CREATE TABLE IF NOT EXISTS global_daily_neurons (

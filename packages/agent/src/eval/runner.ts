@@ -60,7 +60,7 @@ export async function runEvaluation(provider: ModelProvider): Promise<EvalRunRep
             const ops = primaryToolCall.arguments["operations"];
             if (Array.isArray(ops) && ops.length > 0) {
               if (testCase.expectedOperation) {
-                isPass = ops.some((op: any) => op.op === testCase.expectedOperation);
+                isPass = ops.some((op: { op?: string }) => op.op === testCase.expectedOperation);
               } else {
                 isPass = true;
               }

@@ -46,6 +46,7 @@ describe("Renderer Security & Hostile Input Defenses", () => {
         assetResolver: mockResolver,
         showBranding: false,
       });
+      expect(res.ok).toBe(false);
 
       // The schema rejects hostile data via validateSiteDocument,
       // so we also test the layout and components directly with hostile data:

@@ -19,7 +19,7 @@ if (!fs.existsSync(outputDir)) {
 }
 
 // Mock asset resolver for previewing
-const mockAssetResolver: AssetResolver = (assetId: string) => ({
+const mockAssetResolver: AssetResolver = (_assetId: string) => ({
   url: `https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?w=800&auto=format&fit=crop&q=80`,
   width: 800,
   height: 600,

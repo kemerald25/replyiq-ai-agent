@@ -126,7 +126,7 @@ describe("SqliteOwnerStateStore", () => {
 
   it("acquires sequential locks and cleans up stale locks", async () => {
     const release1 = await store.acquireLock("owner_lock_test");
-    let executionOrder: number[] = [];
+    const executionOrder: number[] = [];
 
     const task2 = async () => {
       const release2 = await store.acquireLock("owner_lock_test");

@@ -29,7 +29,7 @@ class MockFailingAndRecoveringProvider implements ModelProvider {
     this.succeedOnCallNumber = succeedOnCallNumber;
   }
 
-  async generate(options: ModelGenerationOptions): Promise<ModelGenerationResult> {
+  async generate(_options: ModelGenerationOptions): Promise<ModelGenerationResult> {
     this.callCount += 1;
 
     if (this.callCount < this.succeedOnCallNumber) {

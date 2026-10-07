@@ -65,7 +65,8 @@ export function summarizeSiteDocument(doc: SiteDocument): string {
         break;
       }
       default: {
-        lines.push(`  - [id: ${(section as any).id}] type: "${(section as any).type}"`);
+        const unknownSection = section as { id?: string; type?: string };
+        lines.push(`  - [id: ${unknownSection.id}] type: "${unknownSection.type}"`);
         break;
       }
     }

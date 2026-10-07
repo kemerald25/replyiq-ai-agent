@@ -135,6 +135,19 @@ describe("Deterministic Command Router & Orchestrator Commands", () => {
       expect(res.replies[0]?.previewUrl).toBeDefined();
     });
 
+    it("handles PREVIEW command returning preview link for active project", async () => {
+      const res = await orchestrator.handleMessage({
+        ownerPhone: OWNER_PHONE,
+        messageId: "msg_prev_active",
+        text: "PREVIEW",
+      });
+
+      expect(res.commandExecuted).toBe("PREVIEW");
+      expect(res.replies[0]?.text).toContain('Here is the current preview link for "Test Salon"');
+      expect(res.replies[0]?.previewUrl).toBeDefined();
+      expect(res.replies[0]?.link?.url).toBeDefined();
+    });
+
     it("handles HELP command with 0 neuron cost", async () => {
       const res = await orchestrator.handleMessage({
         ownerPhone: OWNER_PHONE,
@@ -200,7 +213,7 @@ describe("Deterministic Command Router & Orchestrator Commands", () => {
       });
 
       expect(res.commandExecuted).toBe("UNDO");
-      expect(res.replies[0]?.text).toContain("Undone! Reverted");
+      expect(res.replies[0]?.text).toContain("Undone! I've restored your previous version");
       expect(res.replies[0]?.link?.url).toBeDefined();
 
       const proj = await projectRepo.getById("proj_1");
@@ -220,6 +233,23 @@ describe("Deterministic Command Router & Orchestrator Commands", () => {
 
       expect(res.commandExecuted).toBe("UNDO");
       expect(res.replies[0]?.text).toContain("Cannot undo: this website is at its initial version");
+    });
+
+    it("handles PREVIEW and UNDO when no active project exists", async () => {
+      const emptyOwnerPhone = "+2348099999999";
+      const resPrev = await orchestrator.handleMessage({
+        ownerPhone: emptyOwnerPhone,
+        messageId: "msg_prev_none",
+        text: "PREVIEW",
+      });
+      expect(resPrev.replies[0]?.text).toContain("No active project found");
+
+      const resUndo = await orchestrator.handleMessage({
+        ownerPhone: emptyOwnerPhone,
+        messageId: "msg_undo_none",
+        text: "UNDO",
+      });
+      expect(resUndo.replies[0]?.text).toContain("No active project found to undo");
     });
   });
 });

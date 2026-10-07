@@ -22,19 +22,26 @@ import {
 import { allSampleDocuments } from "@replyiq/templates";
 
 describe("Structured Logging & PII Protection", () => {
-  it("generates deterministic truncated hashes without exposing raw phone numbers", () => {
+  it("generates deterministic HMAC-SHA256 hashes of at least 16 hex chars without exposing raw phone numbers", async () => {
     const phone = "+2348012345678";
-    const hash1 = hashOwnerId(phone);
-    const hash2 = hashOwnerId(phone);
+    const secret1 = "test-secret-salt-key-1";
+    const secret2 = "test-secret-salt-key-2";
 
-    expect(hash1).toBe(hash2);
-    expect(hash1.startsWith("owner_h_")).toBe(true);
-    expect(hash1).not.toContain("2348012345678");
-    expect(hash1).not.toContain("+");
+    const hash1a = await hashOwnerId(phone, secret1);
+    const hash1b = await hashOwnerId(phone, secret1);
+    const hash2 = await hashOwnerId(phone, secret2);
+
+    expect(hash1a).toBe(hash1b);
+    expect(hash1a).not.toBe(hash2); // Keyed HMAC changes with different secret
+    expect(hash1a.startsWith("owner_h_")).toBe(true);
+    // Prefix is 8 chars, followed by 24 hex chars (total 32 chars)
+    expect(hash1a.length).toBeGreaterThanOrEqual(24);
+    expect(hash1a).not.toContain("2348012345678");
+    expect(hash1a).not.toContain("+");
   });
 
-  it("handles empty or missing owner phone gracefully", () => {
-    expect(hashOwnerId("")).toBe("owner_unknown");
+  it("handles empty or missing owner phone gracefully", async () => {
+    expect(await hashOwnerId("")).toBe("owner_unknown");
   });
 
   it("logs structured JSON without raw phone number or raw user message text", async () => {
@@ -141,5 +148,29 @@ describe("Structured Logging & PII Protection", () => {
         expect(entry.textLength).toBe(SECRET_TEXT.length);
       }
     }
+  });
+
+  it("handles info, warn, error log levels and disabled mode in JsonAgentLogger", () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const activeLogger = new JsonAgentLogger(true);
+    activeLogger.log({ timestamp: Date.now(), level: "info", event: "turn_start", ownerHash: "h1" });
+    expect(logSpy).toHaveBeenCalled();
+
+    activeLogger.log({ timestamp: Date.now(), level: "warn", event: "turn_start", ownerHash: "h1" });
+    expect(warnSpy).toHaveBeenCalled();
+
+    activeLogger.log({ timestamp: Date.now(), level: "error", event: "turn_start", ownerHash: "h1" });
+    expect(errSpy).toHaveBeenCalled();
+
+    const disabledLogger = new JsonAgentLogger(false);
+    disabledLogger.log({ timestamp: Date.now(), level: "info", event: "turn_start", ownerHash: "h1" });
+    expect(logSpy).toHaveBeenCalledTimes(1);
+
+    logSpy.mockRestore();
+    warnSpy.mockRestore();
+    errSpy.mockRestore();
   });
 });

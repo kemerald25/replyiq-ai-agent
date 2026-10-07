@@ -45,7 +45,7 @@ async function main() {
     ASSETS_BUCKET: R2Bucket;
   }>({
     configPath,
-    persist: { path: path.resolve(__dirname, "../.wrangler/state/v3") },
+    persist: { path: path.resolve(__dirname, "../../../.wrangler/state/v3") },
   });
 
   try {
@@ -68,8 +68,10 @@ async function main() {
       console.log(`Created test owner: ${owner.id} (${owner.phoneNumber})`);
     }
 
-    // Seed test hero asset
-    const existingAsset = await assetRepo.getById("asset_salon_hero", ownerId);
+    // Seed test hero asset if not already present
+    const existingAsset = await proxy.env.DB.prepare("SELECT id FROM assets WHERE id = ?")
+      .bind("asset_salon_hero")
+      .first();
     if (!existingAsset) {
       await assetRepo.create({
         id: "asset_salon_hero",

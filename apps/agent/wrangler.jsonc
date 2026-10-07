@@ -5,11 +5,7 @@
   "compatibility_date": "2024-04-05",
   "compatibility_flags": ["nodejs_compat"],
   "vars": {
-    "BASE_DOMAIN": "localhost",
-    "ENVIRONMENT": "development",
-    "DEV_SECRET": "replyiq-dev-secret-local",
-    "PREVIEW_BASE_URL": "http://localhost:8787/preview",
-    "MOCK_PROVIDER": "true"
+    "BASE_DOMAIN": "replyiq.cv"
   },
   "dev": {
     "port": 8788

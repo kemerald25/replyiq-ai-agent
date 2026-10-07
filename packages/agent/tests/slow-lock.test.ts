@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import {
   AgentOrchestrator,
   InMemoryOwnerStateStore,
@@ -32,16 +32,17 @@ class SlowProvider implements ModelProvider {
     this.callsInProgress++;
     this.maxConcurrent = Math.max(this.maxConcurrent, this.callsInProgress);
 
-    const callId = `call_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-    this.executionLog.push(`start:${callId}`);
+    const rawText = options.messages.filter((m) => m.role === "user").pop()?.content || "unknown";
+    const text = rawText.replace(/<\/?user_message>/g, "").trim();
+    this.executionLog.push(`start:${text}`);
 
     await new Promise((resolve) => setTimeout(resolve, this.delayMs));
 
-    this.executionLog.push(`end:${callId}`);
+    this.executionLog.push(`end:${text}`);
     this.callsInProgress--;
 
     return {
-      text: "Slow response finished",
+      text: `Finished processing: ${text}`,
       usage: { inputTokens: 50, outputTokens: 20, estimatedNeurons: 1 },
       modelName: "slow-test-model",
     };
@@ -49,7 +50,7 @@ class SlowProvider implements ModelProvider {
 }
 
 describe("Sequential Locking & Slow Provider Lock Defense", () => {
-  it("proves that a second message cannot steal the lock while a slow call is in-flight", async () => {
+  it("proves that a second and third message sent during a slow first turn are all queued and processed in arrival order", async () => {
     const ownerRepo = new InMemoryOwnerRepository();
     const projectRepo = new InMemoryProjectRepository();
     const versionRepo = new InMemoryVersionRepository(projectRepo);
@@ -80,7 +81,7 @@ describe("Sequential Locking & Slow Provider Lock Defense", () => {
     );
     const stateStore = new InMemoryOwnerStateStore();
 
-    const slowProvider = new SlowProvider(100);
+    const slowProvider = new SlowProvider(60);
 
     const PHONE = "+2348012345678";
     const OWNER_ID = "owner_2348012345678";
@@ -121,7 +122,7 @@ describe("Sequential Locking & Slow Provider Lock Defense", () => {
       turnTimeoutMs: 5000,
     });
 
-    // Launch Message 1 (takes 100ms)
+    // Launch Message 1 (takes 60ms)
     const p1 = orchestrator.handleMessage({
       ownerPhone: PHONE,
       messageId: "msg_slow_1",
@@ -135,18 +136,28 @@ describe("Sequential Locking & Slow Provider Lock Defense", () => {
       text: "Second command",
     });
 
-    const [res1, res2] = await Promise.all([p1, p2]);
+    // Immediately launch Message 3 for the same owner while Message 1 is running
+    const p3 = orchestrator.handleMessage({
+      ownerPhone: PHONE,
+      messageId: "msg_slow_3",
+      text: "Third command",
+    });
+
+    const [res1, res2, res3] = await Promise.all([p1, p2, p3]);
 
     expect(res1.messageId).toBe("msg_slow_1");
     expect(res2.messageId).toBe("msg_slow_2");
+    expect(res3.messageId).toBe("msg_slow_3");
 
-    // The slow provider was called twice, but strictly ONE AT A TIME (never concurrently)
+    // All three messages were processed strictly in arrival order (never concurrent, never dropped)
     expect(slowProvider.maxConcurrent).toBe(1);
-    expect(slowProvider.executionLog).toHaveLength(4);
-    // Sequence must be: start(1), end(1), start(2), end(2)
-    expect(slowProvider.executionLog[0]?.startsWith("start:")).toBe(true);
-    expect(slowProvider.executionLog[1]?.startsWith("end:")).toBe(true);
-    expect(slowProvider.executionLog[2]?.startsWith("start:")).toBe(true);
-    expect(slowProvider.executionLog[3]?.startsWith("end:")).toBe(true);
+    expect(slowProvider.executionLog).toEqual([
+      "start:First command",
+      "end:First command",
+      "start:Second command",
+      "end:Second command",
+      "start:Third command",
+      "end:Third command",
+    ]);
   });
 });

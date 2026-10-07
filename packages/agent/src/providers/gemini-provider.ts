@@ -48,7 +48,7 @@ export class GeminiProvider implements ModelProvider {
       parameters: tool.parameters,
     }));
 
-    const payload: any = {
+    const payload: Record<string, unknown> = {
       contents,
       generationConfig: {
         temperature: options.temperature ?? 0.2,
@@ -78,10 +78,11 @@ export class GeminiProvider implements ModelProvider {
         body: JSON.stringify(payload),
         signal: AbortSignal.timeout(this.timeoutMs),
       });
-    } catch (fetchErr: any) {
-      if (fetchErr.name === "TimeoutError" || fetchErr.message?.includes("timed out")) {
+    } catch (fetchErr: unknown) {
+      const err = fetchErr as Error;
+      if (err.name === "TimeoutError" || err.message?.includes("timed out")) {
         const timeoutErr = new Error(`Gemini API request timed out after ${this.timeoutMs}ms`);
-        (timeoutErr as any).isTimeout = true;
+        (timeoutErr as Error & { isTimeout?: boolean }).isTimeout = true;
         throw timeoutErr;
       }
       throw fetchErr;
@@ -96,13 +97,26 @@ export class GeminiProvider implements ModelProvider {
 
       const error = new Error(`Gemini API request failed [${res.status}]: ${errorText}`);
       if (isQuotaOrRateLimit) {
-        (error as any).isRateLimit = true;
-        (error as any).isQuotaExceeded = true;
+        (error as Error & { isRateLimit?: boolean; isQuotaExceeded?: boolean }).isRateLimit = true;
+        (error as Error & { isRateLimit?: boolean; isQuotaExceeded?: boolean }).isQuotaExceeded = true;
       }
       throw error;
     }
 
-    const json: any = await res.json();
+    const json = (await res.json()) as {
+      candidates?: Array<{
+        content?: {
+          parts?: Array<{
+            text?: string;
+            functionCall?: { name: string; args: Record<string, unknown> };
+          }>;
+        };
+      }>;
+      usageMetadata?: {
+        promptTokenCount?: number;
+        candidatesTokenCount?: number;
+      };
+    };
     const candidate = json.candidates?.[0];
     const parts = candidate?.content?.parts || [];
 
@@ -111,6 +125,7 @@ export class GeminiProvider implements ModelProvider {
 
     for (let i = 0; i < parts.length; i++) {
       const part = parts[i];
+      if (!part) continue;
       if (part.text) {
         text += part.text;
       }

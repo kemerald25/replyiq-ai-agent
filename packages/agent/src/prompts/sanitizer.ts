@@ -33,6 +33,7 @@ export function sanitizeUserText(rawText: string): string {
   }
 
   // 3. Remove null bytes or non-printable control characters (except newline and tab)
+  // eslint-disable-next-line no-control-regex
   cleaned = cleaned.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "");
 
   return cleaned.trim();

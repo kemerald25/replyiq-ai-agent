@@ -82,4 +82,15 @@ describe("Edge Cache Utility", () => {
     const purged = await purgeEdgeCachedResponse("https://amaka-luxe.replyiq.cv/");
     expect(purged).toBe(false);
   });
+
+  it("handles exceptions thrown by cache methods gracefully", async () => {
+    mockMatch.mockRejectedValue(new Error("Cache read error"));
+    expect(await getEdgeCachedResponse("https://amaka-luxe.replyiq.cv/")).toBeNull();
+
+    mockPut.mockRejectedValue(new Error("Cache write error"));
+    await expect(putEdgeCachedResponse("https://amaka-luxe.replyiq.cv/", new Response("ok"))).resolves.not.toThrow();
+
+    mockDelete.mockRejectedValue(new Error("Cache delete error"));
+    expect(await purgeEdgeCachedResponse("https://amaka-luxe.replyiq.cv/")).toBe(false);
+  });
 });

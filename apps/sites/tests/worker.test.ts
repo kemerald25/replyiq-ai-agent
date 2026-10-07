@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import worker, { Env } from "../src/index.js";
 import { salonSample } from "@replyiq/templates";
+import * as templates from "@replyiq/templates";
 
 // Mock R2 Object
 function createMockR2Object(content: string | Uint8Array, contentType: string = "text/html; charset=utf-8") {
@@ -24,17 +25,16 @@ class MockD1 {
   public previewTokens: Map<string, any> = new Map();
 
   prepare(sql: string) {
-    const self = this;
     let boundArgs: any[] = [];
     return {
       bind(...args: any[]) {
         boundArgs = args;
         return this;
       },
-      async first<T = any>(): Promise<T | null> {
+      first: async <T = any>(): Promise<T | null> => {
         if (sql.includes("FROM projects WHERE slug = ?")) {
           const slug = boundArgs[0];
-          for (const proj of self.projects.values()) {
+          for (const proj of this.projects.values()) {
             if (proj.slug === slug && proj.deleted_at === null) {
               return {
                 id: proj.id,
@@ -50,25 +50,25 @@ class MockD1 {
 
         if (sql.includes("FROM preview_tokens pt")) {
           const tokenHash = boundArgs[0];
-          const token = self.previewTokens.get(tokenHash);
+          const token = this.previewTokens.get(tokenHash);
           if (!token) return null;
-          const proj = self.projects.get(token.project_id);
+          const proj = this.projects.get(token.project_id);
           if (!proj) return null;
           return {
             project_id: proj.id,
             slug: proj.slug,
             version_number: token.version_number,
             expires_at: token.expires_at,
-            document_json: JSON.stringify(salonSample),
+            document_json: token.document_json !== undefined ? token.document_json : JSON.stringify(salonSample),
           } as T;
         }
 
         return null;
       },
-      async all<T = any>(): Promise<{ results: T[] }> {
+      all: async <T = any>(): Promise<{ results: T[] }> => {
         if (sql.includes("FROM projects WHERE status = 'live'")) {
           const list: any[] = [];
-          for (const proj of self.projects.values()) {
+          for (const proj of this.projects.values()) {
             if (proj.status === "live" && proj.deleted_at === null) {
               list.push({
                 slug: proj.slug,
@@ -337,6 +337,23 @@ describe("Cloudflare Sites Worker", () => {
       expect(res.headers.get("X-Robots-Tag")).toBe("noindex, nofollow");
     });
 
+    it("serves default suspension message when suspended_reason is null", async () => {
+      mockDb.projects.set("p_sus_default", {
+        id: "p_sus_default",
+        slug: "no-reason-site",
+        status: "suspended",
+        published_version: 1,
+        suspended_reason: null,
+        deleted_at: null,
+      });
+
+      const req = new Request("https://no-reason-site.replyiq.cv/");
+      const res = await worker.fetch(req, env);
+      expect(res.status).toBe(403);
+      const html = await res.text();
+      expect(html).toContain("This website has been temporarily suspended by the platform administrator.");
+    });
+
     it("serves live published sites directly from R2 with edge cache headers", async () => {
       mockDb.projects.set("p_live", {
         id: "p_live",
@@ -397,13 +414,23 @@ describe("Cloudflare Sites Worker", () => {
       const res = await worker.fetch(req, env);
       expect(res.status).toBe(404);
     });
+
+    it("returns 404 for paths on CDN host not starting with /assets/", async () => {
+      const req = new Request("https://cdn.replyiq.cv/other-path/file.png");
+      const res = await worker.fetch(req, env);
+      expect(res.status).toBe(404);
+    });
+
+    it("returns 404 for unknown domains not matching baseDomain or bypass hosts", async () => {
+      const req = new Request("https://completely-unrelated-domain.com/");
+      const res = await worker.fetch(req, env);
+      expect(res.status).toBe(404);
+    });
   });
 
   describe("Preview Route", () => {
     it("serves preview for valid unexpired token with private no-store headers", async () => {
       const token = "a1b2c3d4e5f678901234567890abcdef";
-      // Hash of token
-      const tokenHash = "96c09b9f93933c063cf26faef7655883ef2807f4a25032a105c30b20ef225674"; // computeSha256Hex
       // Let's compute actual sha256Hex of token:
       const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
       const actualHash = Array.from(new Uint8Array(buf))
@@ -539,5 +566,185 @@ describe("Cloudflare Sites Worker", () => {
 
       vi.unstubAllGlobals();
     });
+
+    it("returns 404 when live site HTML object is missing from R2", async () => {
+      mockDb.projects.set("p_missing_html", {
+        id: "p_missing_html",
+        slug: "ghost-site",
+        status: "live",
+        published_version: 1,
+        deleted_at: null,
+      });
+      // Do NOT set HTML in mockSitesBucket
+
+      const req = new Request("https://ghost-site.replyiq.cv/");
+      const res = await worker.fetch(req, env);
+      expect(res.status).toBe(404);
+      expect(res.headers.get("Content-Type")).toContain("text/html");
+    });
+
+    it("returns 404 when preview token is shorter than 16 characters", async () => {
+      const req = new Request("https://preview.replyiq.cv/short-tok");
+      const res = await worker.fetch(req, env);
+      expect(res.status).toBe(404);
+    });
+
+    it("returns 500 when preview document_json is corrupted", async () => {
+      const token = "0123456789abcdef0123456789abcdef";
+      vi.spyOn(globalThis.crypto.subtle, "digest").mockResolvedValueOnce(new Uint8Array(32).buffer);
+
+      mockDb.projects.set("p_corrupt", {
+        id: "p_corrupt",
+        slug: "corrupt-preview",
+        status: "draft",
+        deleted_at: null,
+      });
+      mockDb.previewTokens.set("0000000000000000000000000000000000000000000000000000000000000000", {
+        project_id: "p_corrupt",
+        version_number: 1,
+        expires_at: Date.now() + 3600000,
+        document_json: "not valid json {",
+      });
+
+      const req = new Request(`https://preview.replyiq.cv/${token}`);
+      const res = await worker.fetch(req, env);
+      expect(res.status).toBe(500);
+      expect(await res.text()).toContain("Corrupted preview document");
+    });
+
+    it("returns 500 when preview renderSite returns ok: false", async () => {
+      const token = "0123456789abcdef0123456789abcdef";
+      vi.spyOn(globalThis.crypto.subtle, "digest").mockResolvedValueOnce(new Uint8Array(32).buffer);
+
+      mockDb.projects.set("p_fail", {
+        id: "p_fail",
+        slug: "fail-preview",
+        status: "draft",
+        deleted_at: null,
+      });
+      mockDb.previewTokens.set("0000000000000000000000000000000000000000000000000000000000000000", {
+        project_id: "p_fail",
+        version_number: 1,
+        expires_at: Date.now() + 3600000,
+        document_json: JSON.stringify(salonSample),
+      });
+
+      const spy = vi.spyOn(templates, "renderSite").mockReturnValueOnce({
+        ok: false,
+        errors: ["Simulated render syntax error"],
+      } as any);
+
+      const req = new Request(`https://preview.replyiq.cv/${token}`);
+      const res = await worker.fetch(req, env);
+      expect(res.status).toBe(500);
+      expect(await res.text()).toContain("Preview rendering failed");
+
+      spy.mockRestore();
+    });
+
+    it("serves live site immediately when edge cache hits", async () => {
+      vi.stubGlobal("caches", {
+        default: {
+          match: vi.fn().mockResolvedValue(new Response("Cached live page from edge", { status: 200 })),
+          put: vi.fn(),
+          delete: vi.fn(),
+        },
+      });
+
+      const req = new Request("https://amaka-luxe.replyiq.cv/");
+      const res = await worker.fetch(req, env);
+      expect(res.status).toBe(200);
+      expect(await res.text()).toBe("Cached live page from edge");
+
+      vi.unstubAllGlobals();
+    });
+
+    it("returns 404 when cdn asset path has no asset key", async () => {
+      const req = new Request("https://cdn.replyiq.cv/assets/");
+      const res = await worker.fetch(req, env);
+      expect(res.status).toBe(404);
+    });
+
+    it("serves dev directory landing page even if D1 query throws an error", async () => {
+      const devEnv: Env = {
+        ...env,
+        ENVIRONMENT: "development",
+        BASE_DOMAIN: "localhost",
+      };
+      // Cause DB.prepare to throw
+      mockDb.prepare = () => {
+        throw new Error("DB offline");
+      };
+
+      const req = new Request("http://localhost:8787/");
+      const res = await worker.fetch(req, devEnv);
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).toContain("ReplyIQ Sites Worker");
+    });
+
+    it("supports HEAD request on preview route", async () => {
+      const token = "a1b2c3d4e5f678901234567890abcdef";
+      const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
+      const actualHash = Array.from(new Uint8Array(buf))
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+
+      mockDb.projects.set("p_preview", {
+        id: "p_preview",
+        slug: "preview-shop",
+        status: "draft",
+        published_version: null,
+      });
+
+      mockDb.previewTokens.set(actualHash, {
+        project_id: "p_preview",
+        version_number: 1,
+        expires_at: Date.now() + 3600 * 1000,
+      });
+
+      const req = new Request(`https://preview.replyiq.cv/${token}`, { method: "HEAD" });
+      const res = await worker.fetch(req, env);
+      expect(res.status).toBe(200);
+      expect(await res.text()).toBe("");
+    });
+
+    it("handles omitted BYPASS_HOSTS cleanly", async () => {
+      const envWithoutBypass: Env = {
+        ...env,
+        BYPASS_HOSTS: undefined,
+      };
+      const req = new Request("https://replyiq.cv/");
+      const fetchSpy = vi.fn().mockResolvedValue(new Response("Apex Passthrough", { status: 200 }));
+      vi.stubGlobal("fetch", fetchSpy);
+      const res = await worker.fetch(req, envWithoutBypass);
+      expect(res.status).toBe(200);
+      expect(await res.text()).toBe("Apex Passthrough");
+      vi.unstubAllGlobals();
+    });
+
+    it("renders dev landing page with project that has no explicit template", async () => {
+      const devEnv: Env = {
+        ...env,
+        ENVIRONMENT: "development",
+        BASE_DOMAIN: "localhost",
+      };
+      mockDb.projects.set("p_no_template", {
+        id: "p_no_template",
+        slug: "unspecified-tmpl",
+        status: "live",
+        name: "Unspecified Template",
+        template: "",
+        deleted_at: null,
+      });
+
+      const req = new Request("http://localhost:8787/");
+      const res = await worker.fetch(req, devEnv);
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).toContain("unspecified-tmpl");
+      expect(html).toContain("site");
+    });
   });
 });
+

@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import * as templates from "@replyiq/templates";
 import {
   InMemoryOwnerRepository,
   InMemoryProjectRepository,
@@ -275,6 +276,97 @@ describe("PublishService Pipeline & Atomicity", () => {
       await expect(publishService.rollback("proj_1", OWNER_ID)).rejects.toThrow(
         RollbackNotAvailableError
       );
+    });
+
+    it("throws RollbackNotAvailableError if project is not published (draft)", async () => {
+      await expect(publishService.rollback("proj_1", OWNER_ID)).rejects.toThrow(
+        RollbackNotAvailableError
+      );
+    });
+
+    it("re-renders and writes HTML during rollback if cached R2 object is missing", async () => {
+      await publishService.publish("proj_1", OWNER_ID, 1);
+
+      const v2Doc = { ...sampleDoc, metadata: { ...sampleDoc.metadata, title: "Title V2" } };
+      await versionRepo.createNextVersion("proj_1", OWNER_ID, 1, v2Doc, "user");
+      await publishService.publish("proj_1", OWNER_ID, 2);
+
+      // Delete HTML for version 1 from storage
+      storage.htmlStore.delete("sites/proj_1/1.html");
+
+      const rolledBack = await publishService.rollback("proj_1", OWNER_ID);
+      expect(rolledBack).toBe(1);
+      expect(storage.htmlStore.has("sites/proj_1/1.html")).toBe(true);
+    });
+
+    it("throws NotFoundError when historic version is missing during rollback re-render", async () => {
+      await projectRepo.createWithInitialVersion(
+        {
+          id: "proj_rb_missing",
+          ownerId: OWNER_ID,
+          slug: "rb-missing",
+          name: "RB Missing",
+          template: "portfolio",
+          status: "draft",
+          currentVersion: 1,
+          publishedVersion: null,
+          suspendedReason: null,
+          deletedAt: null,
+        },
+        sampleDoc,
+        "user"
+      );
+      await publishService.publish("proj_rb_missing", OWNER_ID, 1);
+      const v2Doc = { ...sampleDoc, metadata: { ...sampleDoc.metadata, title: "V2" } };
+      await versionRepo.createNextVersion("proj_rb_missing", OWNER_ID, 1, v2Doc, "user");
+      await publishService.publish("proj_rb_missing", OWNER_ID, 2);
+
+      // Delete v1 from versionRepo AND delete HTML from storage
+      await versionRepo.deleteVersions("proj_rb_missing", [1]);
+      storage.htmlStore.delete("sites/proj_rb_missing/1.html");
+
+      await expect(publishService.rollback("proj_rb_missing", OWNER_ID)).rejects.toThrow(
+        /not found/i
+      );
+    });
+
+    it("throws PublishValidationError when historic version render fails during rollback re-render", async () => {
+      await projectRepo.createWithInitialVersion(
+        {
+          id: "proj_rb_fail",
+          ownerId: OWNER_ID,
+          slug: "rb-fail",
+          name: "RB Fail",
+          template: "portfolio",
+          status: "draft",
+          currentVersion: 1,
+          publishedVersion: null,
+          suspendedReason: null,
+          deletedAt: null,
+        },
+        sampleDoc,
+        "user"
+      );
+      await publishService.publish("proj_rb_fail", OWNER_ID, 1);
+      const v2Doc = { ...sampleDoc, metadata: { ...sampleDoc.metadata, title: "V2" } };
+      await versionRepo.createNextVersion("proj_rb_fail", OWNER_ID, 1, v2Doc, "user");
+      await publishService.publish("proj_rb_fail", OWNER_ID, 2);
+
+      // Delete HTML for v1 from storage to force re-render
+      storage.htmlStore.delete("sites/proj_rb_fail/1.html");
+
+      const spy = vi.spyOn(templates, "renderSite").mockReturnValueOnce({
+        ok: false,
+        errors: ["Simulated rollback render error"],
+      } as any);
+
+      try {
+        await expect(publishService.rollback("proj_rb_fail", OWNER_ID)).rejects.toThrow(
+          PublishValidationError
+        );
+      } finally {
+        spy.mockRestore();
+      }
     });
   });
 

@@ -192,4 +192,149 @@ describe("renderSite Engine", () => {
       }
     });
   });
+
+  describe("Section Renderer Branch Variations", () => {
+    it("renders sections with optional fields omitted or varied", () => {
+      const variedDoc: any = {
+        schemaVersion: 1,
+        subdomain: "varied-biz",
+        template: "portfolio",
+        metadata: {
+          title: "Varied Business",
+          description: "Testing optional branches",
+        },
+        theme: {
+          palette: "sunset-amber",
+          font: "system-sans",
+          mode: "dark",
+        },
+        contact: {
+          whatsappNumber: "+2348021234567",
+        },
+        sections: [
+          // Hero without image, without cta, without subheading
+          {
+            id: "hero-bare",
+            type: "hero",
+            heading: "Just A Heading",
+          },
+          // Hero with cta with label and subheading, without image
+          {
+            id: "hero-with-cta",
+            type: "hero",
+            heading: "Heading 2",
+            subheading: "Subheading 2",
+            cta: { label: "Explore", url: "https://example.com" },
+          },
+          // Services without subtitle, items without image, description, price
+          {
+            id: "services-bare",
+            type: "services",
+            title: "Bare Services",
+            items: [
+              { id: "s1", name: "Basic Service" },
+              { id: "s2", name: "Service with Price", price: 5000 },
+            ],
+          },
+          // Contact without whatsapp, with email, address, without description, without socials
+          {
+            id: "contact-varied",
+            type: "contact",
+            title: "Contact Us",
+            email: "info@example.com",
+            address: "123 Street",
+          },
+          // Testimonials without subtitle, items without rating/avatar
+          {
+            id: "testimonials-bare",
+            type: "testimonials",
+            title: "Testimonials",
+            items: [{ id: "t1", quote: "Awesome!", author: "Anonymous" }],
+          },
+          // Gallery without description
+          {
+            id: "gallery-bare",
+            type: "gallery",
+            title: "Gallery",
+            images: [{ assetId: "asset_gallery_1", alt: "Photo" }],
+          },
+          // Footer without links
+          {
+            id: "footer-bare",
+            type: "footer",
+            copyrightText: "Copyright 2026",
+          },
+        ],
+      };
+
+      const res = renderSite(variedDoc, {
+        mode: "live",
+        canonicalUrl: "https://varied-biz.replyiq.cv",
+        assetResolver: mockResolver,
+        showBranding: false,
+      });
+
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.html).toContain("Just A Heading");
+        expect(res.html).toContain("Bare Services");
+        expect(res.html).toContain("info@example.com");
+        expect(res.html).toContain("Awesome!");
+      }
+    });
+
+    it("renders logo inside h1 when no hero section is present", () => {
+      const docNoHero: any = {
+        schemaVersion: 1,
+        subdomain: "no-hero",
+        template: "portfolio",
+        metadata: { title: "No Hero Title", description: "Testing h1 logo" },
+        theme: { palette: "lagos-emerald", font: "system-sans", mode: "light" },
+        contact: { whatsappNumber: "+2348021234567" },
+        sections: [
+          { id: "about-only", type: "about", title: "About Us", content: "Content here" },
+        ],
+      };
+
+      const res = renderSite(docNoHero, {
+        mode: "live",
+        canonicalUrl: "https://no-hero.replyiq.cv",
+        assetResolver: mockResolver,
+        showBranding: false,
+      });
+
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.html).toContain('<h1 class="site-logo">No Hero Title</h1>');
+      }
+    });
+
+    it("omits nav bar when document has only hero and footer", () => {
+      const docOnlyHero: any = {
+        schemaVersion: 1,
+        subdomain: "only-hero",
+        template: "portfolio",
+        metadata: { title: "Only Hero", description: "Testing no nav" },
+        theme: { palette: "lagos-emerald", font: "system-sans", mode: "light" },
+        contact: { whatsappNumber: "+2348021234567" },
+        sections: [
+          { id: "hero-1", type: "hero", heading: "Heading Hero" },
+          { id: "footer-1", type: "footer", copyrightText: "2026" },
+        ],
+      };
+
+      const res = renderSite(docOnlyHero, {
+        mode: "live",
+        canonicalUrl: "https://only-hero.replyiq.cv",
+        assetResolver: mockResolver,
+        showBranding: false,
+      });
+
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.html).not.toContain('<nav class="site-nav"');
+      }
+    });
+  });
 });
+

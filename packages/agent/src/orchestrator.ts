@@ -15,6 +15,7 @@ import {
 } from "./contracts/transport.js";
 import { ModelProvider } from "./contracts/provider.js";
 import { IOwnerStateStore } from "./state/store.js";
+import { OwnerState } from "./state/types.js";
 import { parseCommand } from "./commands/router.js";
 import { ToolExecutor } from "./tools/executor.js";
 import { AGENT_TOOLS } from "./tools/definitions.js";
@@ -36,7 +37,9 @@ export interface AgentOrchestratorConfig {
   budgetTracker?: BudgetTracker;
   policy?: PlanPolicy;
   baseDomain?: string;
-  previewBaseUrl?: string; // e.g. "http://localhost:8787/preview" or "https://preview.replyiq.cv"
+  previewBaseUrl?: string; // Optional override e.g. "http://preview.localhost:8787" or "https://preview.replyiq.cv"
+  environment?: "development" | "production" | "staging";
+  ownerHashSecret?: string;
   turnTimeoutMs?: number;
   logger?: IAgentLogger;
 }
@@ -54,7 +57,9 @@ export class AgentOrchestrator {
   private budgetTracker: BudgetTracker;
   private policy: PlanPolicy;
   private baseDomain: string;
-  private previewBaseUrl: string;
+  private previewBaseUrl?: string;
+  private environment: "development" | "production" | "staging";
+  private ownerHashSecret?: string;
   private turnTimeoutMs: number;
   private logger: IAgentLogger;
   private toolExecutor = new ToolExecutor();
@@ -75,9 +80,30 @@ export class AgentOrchestrator {
     this.budgetTracker = config.budgetTracker || new BudgetTracker();
     this.policy = config.policy || new AllowAllPlanPolicy();
     this.baseDomain = config.baseDomain || "localhost";
-    this.previewBaseUrl = config.previewBaseUrl || `http://localhost:8787/preview`;
+    this.previewBaseUrl = config.previewBaseUrl;
+    this.environment = config.environment || (this.baseDomain === "localhost" ? "development" : "production");
+    this.ownerHashSecret = config.ownerHashSecret;
     this.turnTimeoutMs = config.turnTimeoutMs ?? 45_000;
     this.logger = config.logger || new JsonAgentLogger(false);
+  }
+
+  buildSiteUrl(slug: string): string {
+    const isDev = this.environment === "development" || this.baseDomain === "localhost";
+    if (isDev) {
+      return `http://${slug}.localhost:8787`;
+    }
+    return `https://${slug}.${this.baseDomain}`;
+  }
+
+  buildPreviewUrl(token: string): string {
+    if (this.previewBaseUrl) {
+      return `${this.previewBaseUrl.replace(/\/+$/, "")}/${token}`;
+    }
+    const isDev = this.environment === "development" || this.baseDomain === "localhost";
+    if (isDev) {
+      return `http://preview.localhost:8787/${token}`;
+    }
+    return `https://preview.${this.baseDomain}/${token}`;
   }
 
   async handleMessage(incoming: IncomingMessage): Promise<AgentResponse> {
@@ -87,7 +113,7 @@ export class AgentOrchestrator {
     const messageId = incoming.messageId;
     const dedupKey = `${normalizedPhone}:${messageId}`;
 
-    const ownerHash = hashOwnerId(normalizedPhone);
+    const ownerHash = await hashOwnerId(normalizedPhone, this.ownerHashSecret);
 
     this.logger.log({
       level: "info",
@@ -127,11 +153,11 @@ export class AgentOrchestrator {
         if (alreadyDone) return alreadyDone;
 
         // Turn timeout race
-        let timer: any;
+        let timer: ReturnType<typeof setTimeout> | undefined;
         const turnTimeoutPromise = new Promise<AgentResponse>((_, reject) => {
           timer = setTimeout(() => {
             const err = new Error(`Agent turn timed out after ${this.turnTimeoutMs}ms`);
-            (err as any).isTurnTimeout = true;
+            (err as Error & { isTurnTimeout?: boolean }).isTurnTimeout = true;
             reject(err);
           }, this.turnTimeoutMs);
         });
@@ -142,14 +168,15 @@ export class AgentOrchestrator {
             this.processMessageInternal(normalizedPhone, incoming),
             turnTimeoutPromise,
           ]);
-        } catch (turnErr: any) {
-          if (turnErr.isTurnTimeout) {
+        } catch (turnErr: unknown) {
+          const timeoutErr = turnErr as Error & { isTurnTimeout?: boolean };
+          if (timeoutErr.isTurnTimeout) {
             this.logger.log({
               level: "error",
               event: "turn_timeout",
               ownerHash,
               messageId,
-              error: turnErr.message,
+              error: timeoutErr.message,
               timestamp: Date.now(),
             });
             response = {
@@ -329,7 +356,7 @@ export class AgentOrchestrator {
           messages,
           tools: AGENT_TOOLS,
         });
-      } catch (defaultErr: any) {
+      } catch (defaultErr: unknown) {
         // Try fallback provider if configured
         if (this.fallbackProvider) {
           const fallbackBudget = await this.budgetTracker.checkCanCallModel(state.usage, true);
@@ -340,8 +367,9 @@ export class AgentOrchestrator {
                 tools: AGENT_TOOLS,
               });
               usedFallback = true;
-            } catch (fallbackErr: any) {
-              const isRateOrQuota = fallbackErr.isRateLimit || fallbackErr.isQuotaExceeded;
+            } catch (fallbackErr: unknown) {
+              const fallbackObj = fallbackErr as { isRateLimit?: boolean; isQuotaExceeded?: boolean };
+              const isRateOrQuota = fallbackObj.isRateLimit || fallbackObj.isQuotaExceeded;
               return {
                 messageId: incoming.messageId,
                 replies: [
@@ -368,7 +396,8 @@ export class AgentOrchestrator {
             };
           }
         } else {
-          const isRateOrQuota = defaultErr?.isRateLimit || defaultErr?.isQuotaExceeded;
+          const defaultErrObj = defaultErr as { isRateLimit?: boolean; isQuotaExceeded?: boolean };
+          const isRateOrQuota = defaultErrObj?.isRateLimit || defaultErrObj?.isQuotaExceeded;
           return {
             messageId: incoming.messageId,
             replies: [
@@ -450,7 +479,7 @@ export class AgentOrchestrator {
             newVersionRecord.versionNumber,
             3600 // 1 hour
           );
-          const previewUrl = `${this.previewBaseUrl}/${previewToken.token}`;
+          const previewUrl = this.buildPreviewUrl(previewToken.token);
 
           finalReplies = [
             {
@@ -486,7 +515,7 @@ export class AgentOrchestrator {
             currentVersionNumber,
             1800
           );
-          const previewUrl = `${this.previewBaseUrl}/${previewToken.token}`;
+          const previewUrl = this.buildPreviewUrl(previewToken.token);
 
           state.pendingConfirmation = {
             type: "publish",
@@ -499,7 +528,7 @@ export class AgentOrchestrator {
 
           finalReplies = [
             {
-              text: `Ready to publish "${activeProject.name}" (Version ${currentVersionNumber}) live?\n\nPreview your site: ${previewUrl}`,
+              text: `Ready to publish "${activeProject.name}" live?\n\nPreview your site: ${previewUrl}`,
               menu: [
                 { number: 1, label: "Publish now (Go live)" },
                 { number: 2, label: "Keep editing (Stay in draft)" },
@@ -545,7 +574,7 @@ export class AgentOrchestrator {
 
   private async handleDeterministicCommand(
     ownerId: string,
-    state: any,
+    state: OwnerState,
     command: NonNullable<ReturnType<typeof parseCommand>>,
     incoming: IncomingMessage
   ): Promise<AgentResponse> {
@@ -726,7 +755,7 @@ export class AgentOrchestrator {
         state.pendingConfirmation = null;
 
         const token = await this.previewService.createPreviewToken(created.project.id, ownerId, 1, 3600);
-        const previewUrl = `${this.previewBaseUrl}/${token.token}`;
+        const previewUrl = this.buildPreviewUrl(token.token);
 
         return {
           messageId: incoming.messageId,
@@ -764,13 +793,13 @@ export class AgentOrchestrator {
           project.currentVersion,
           3600
         );
-        const previewUrl = `${this.previewBaseUrl}/${token.token}`;
+        const previewUrl = this.buildPreviewUrl(token.token);
 
         return {
           messageId: incoming.messageId,
           replies: [
             {
-              text: `Here is the current preview link for "${project.name}" (Version ${project.currentVersion}):\n\n${previewUrl}`,
+              text: `Here is the current preview link for "${project.name}":\n\n${previewUrl}`,
               link: {
                 url: previewUrl,
                 label: "View Preview",
@@ -819,13 +848,13 @@ export class AgentOrchestrator {
           restored.versionNumber,
           3600
         );
-        const previewUrl = `${this.previewBaseUrl}/${token.token}`;
+        const previewUrl = this.buildPreviewUrl(token.token);
 
         return {
           messageId: incoming.messageId,
           replies: [
             {
-              text: `↩️ Undone! Reverted "${project.name}" to Version ${restored.versionNumber}.\n\nPreview:`,
+              text: `↩️ Undone! I've restored your previous version for "${project.name}".\n\nPreview:`,
               link: {
                 url: previewUrl,
                 label: "View Reverted Site",
@@ -858,7 +887,7 @@ export class AgentOrchestrator {
           project.currentVersion,
           1800
         );
-        const previewUrl = `${this.previewBaseUrl}/${token.token}`;
+        const previewUrl = this.buildPreviewUrl(token.token);
 
         state.pendingConfirmation = {
           type: "publish",
@@ -873,7 +902,7 @@ export class AgentOrchestrator {
           messageId: incoming.messageId,
           replies: [
             {
-              text: `Ready to publish "${project.name}" (Version ${project.currentVersion}) live?\n\nPreview your changes before publishing:\n${previewUrl}`,
+              text: `Ready to publish "${project.name}" live?\n\nPreview your changes before publishing:\n${previewUrl}`,
               menu: [
                 { number: 1, label: "Publish now (Go live)" },
                 { number: 2, label: "Keep editing (Stay in draft)" },
@@ -938,7 +967,7 @@ export class AgentOrchestrator {
             state.conversationState = "IDLE";
 
             const project = await this.projectRepo.getById(conf.projectId, ownerId);
-            const liveUrl = `https://${project?.slug || "site"}.${this.baseDomain}`;
+            const liveUrl = this.buildSiteUrl(project?.slug || "site");
 
             return {
               messageId: incoming.messageId,
@@ -1009,7 +1038,7 @@ export class AgentOrchestrator {
     }
   }
 
-  private async resolveActiveProject(ownerId: string, state: any) {
+  private async resolveActiveProject(ownerId: string, state: OwnerState) {
     if (state.activeProjectId) {
       const proj = await this.projectRepo.getById(state.activeProjectId, ownerId);
       if (proj && !proj.deletedAt) {

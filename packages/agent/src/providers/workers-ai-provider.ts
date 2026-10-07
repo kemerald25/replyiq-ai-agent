@@ -6,12 +6,32 @@ import {
 } from "../contracts/provider.js";
 import { calculateNeuronUsage } from "../budget/pricing.js";
 
+interface WorkersAiToolCall {
+  id?: string;
+  name?: string;
+  function?: {
+    name?: string;
+    arguments?: string | Record<string, unknown>;
+  };
+  arguments?: string | Record<string, unknown>;
+}
+
+interface WorkersAiRawResponse {
+  response?: string;
+  text?: string;
+  tool_calls?: WorkersAiToolCall[];
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+  };
+}
+
 export interface WorkersAIProviderConfig {
   accountId?: string;
   apiToken?: string;
   model?: string;
   gatewayUrl?: string; // Optional Cloudflare AI Gateway endpoint
-  aiBinding?: { run: (model: string, input: any) => Promise<any> };
+  aiBinding?: { run: (model: string, input: Record<string, unknown>) => Promise<unknown> };
   timeoutMs?: number;
 }
 
@@ -21,7 +41,7 @@ export class WorkersAIProvider implements ModelProvider {
   private accountId?: string;
   private apiToken?: string;
   private gatewayUrl?: string;
-  private aiBinding?: { run: (model: string, input: any) => Promise<any> };
+  private aiBinding?: { run: (model: string, input: Record<string, unknown>) => Promise<unknown> };
   private timeoutMs: number;
 
   constructor(config: WorkersAIProviderConfig = {}) {
@@ -53,19 +73,19 @@ export class WorkersAIProvider implements ModelProvider {
       max_tokens: options.maxTokens ?? 1024,
     };
 
-    let rawResponse: any;
+    let rawResponse: WorkersAiRawResponse;
 
     // 1. Direct Workers AI binding if running inside Cloudflare Worker
     if (this.aiBinding) {
-      let timer: any;
+      let timer: ReturnType<typeof setTimeout> | undefined;
       const timeoutPromise = new Promise((_, reject) => {
         timer = setTimeout(() => reject(new Error(`Workers AI binding timed out after ${this.timeoutMs}ms`)), this.timeoutMs);
       });
       try {
-        rawResponse = await Promise.race([
+        rawResponse = (await Promise.race([
           this.aiBinding.run(this.model, inputPayload),
           timeoutPromise,
-        ]);
+        ])) as WorkersAiRawResponse;
       } finally {
         clearTimeout(timer);
       }
@@ -98,10 +118,11 @@ export class WorkersAIProvider implements ModelProvider {
           body: JSON.stringify(inputPayload),
           signal: AbortSignal.timeout(this.timeoutMs),
         });
-      } catch (fetchErr: any) {
-        if (fetchErr.name === "TimeoutError" || fetchErr.message?.includes("timed out")) {
+      } catch (fetchErr: unknown) {
+        const err = fetchErr as Error;
+        if (err.name === "TimeoutError" || err.message?.includes("timed out")) {
           const timeoutErr = new Error(`Workers AI request timed out after ${this.timeoutMs}ms`);
-          (timeoutErr as any).isTimeout = true;
+          (timeoutErr as Error & { isTimeout?: boolean }).isTimeout = true;
           throw timeoutErr;
         }
         throw fetchErr;
@@ -112,7 +133,7 @@ export class WorkersAIProvider implements ModelProvider {
         throw new Error(`Workers AI request failed [${res.status}]: ${errorText}`);
       }
 
-      const json: any = await res.json();
+      const json = (await res.json()) as { result?: WorkersAiRawResponse } & WorkersAiRawResponse;
       rawResponse = json.result || json;
     }
 
@@ -123,6 +144,7 @@ export class WorkersAIProvider implements ModelProvider {
     if (Array.isArray(rawResponse.tool_calls)) {
       for (let i = 0; i < rawResponse.tool_calls.length; i++) {
         const tc = rawResponse.tool_calls[i];
+        if (!tc) continue;
         const fnName = tc.name || tc.function?.name;
         let fnArgs = tc.arguments || tc.function?.arguments;
         if (typeof fnArgs === "string") {
@@ -136,7 +158,7 @@ export class WorkersAIProvider implements ModelProvider {
           toolCalls.push({
             id: tc.id || `call_${i + 1}`,
             name: fnName,
-            arguments: fnArgs || {},
+            arguments: (fnArgs as Record<string, unknown>) || {},
           });
         }
       }

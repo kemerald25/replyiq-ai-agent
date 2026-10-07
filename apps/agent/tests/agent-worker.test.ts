@@ -191,6 +191,31 @@ describe("ReplyIQ Agent Worker & Dev Message Endpoint", () => {
       expect(data.error).toBe("Agent processing failure");
     });
 
+    it("returns 405 Method Not Allowed for non-POST requests on /dev/message", async () => {
+      const env = createMockEnv();
+      const req = new Request("http://localhost/dev/message", { method: "GET" });
+      const res = await worker.fetch(req, env);
+      expect(res.status).toBe(405);
+    });
+
+    it("authenticates with default local secret when DEV_SECRET is omitted", async () => {
+      const env = createMockEnv({ DEV_SECRET: undefined });
+      const req = new Request("http://localhost/dev/message", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-ReplyIQ-Secret": "replyiq-dev-secret-local",
+        },
+        body: JSON.stringify({
+          ownerPhone: "+2348012345678",
+          text: "MENU",
+        }),
+      });
+
+      const res = await worker.fetch(req, env);
+      expect(res.status).toBe(200);
+    });
+
     it("returns 404 for unknown endpoints", async () => {
       const env = createMockEnv();
       const req = new Request("http://localhost/nonexistent-route");
@@ -199,3 +224,4 @@ describe("ReplyIQ Agent Worker & Dev Message Endpoint", () => {
     });
   });
 });
+

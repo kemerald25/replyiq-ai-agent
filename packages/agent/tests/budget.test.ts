@@ -4,7 +4,6 @@ import {
   calculateNeuronUsage,
   InMemoryGlobalUsageStore,
   OwnerUsage,
-  WORKERS_AI_PRICING,
 } from "../src/index.js";
 
 describe("Budget & Usage Limits", () => {
@@ -40,6 +39,12 @@ describe("Budget & Usage Limits", () => {
     // Total = 11.0926 neurons
     const neurons = calculateNeuronUsage("llama-3.1-8b-instruct-fp8", 1000, 200);
     expect(neurons).toBeCloseTo(11.0926, 3);
+
+    const neurons70b = calculateNeuronUsage("llama-3.3-70b-instruct-fp8-fast", 1000, 200);
+    expect(neurons70b).toBeGreaterThan(0);
+
+    const neuronsDefault = calculateNeuronUsage("custom-unknown-model", 1000, 200);
+    expect(neuronsDefault).toBeGreaterThan(0);
   });
 
   it("blocks when owner message limit (120) is reached", async () => {

@@ -1,9 +1,3 @@
-/**
- * Ambient type declarations for standard server/worker runtime globals.
- * Present in Node.js LTS and Cloudflare Workers runtime.
- * DOM lib is excluded from tsconfig to prevent accidental usage of window/document.
- */
-
 declare namespace console {
   function log(...args: unknown[]): void;
   function warn(...args: unknown[]): void;
@@ -11,26 +5,49 @@ declare namespace console {
   function info(...args: unknown[]): void;
 }
 
-declare function fetch(
-  input: string | URL | any,
-  init?: any
-): Promise<any>;
+declare function setTimeout(handler: (...args: any[]) => void, timeout?: number, ...args: any[]): any;
+declare function clearTimeout(id: any): void;
+
+declare class TextEncoder {
+  encode(input?: string): Uint8Array;
+}
+
+declare const crypto: {
+  randomUUID(): string;
+  getRandomValues<T extends ArrayBufferView | null>(array: T): T;
+  subtle: {
+    digest(algorithm: string, data: ArrayBuffer | ArrayBufferView): Promise<ArrayBuffer>;
+    importKey(
+      format: "raw" | "pkcs8" | "spki" | "jwk",
+      keyData: ArrayBuffer | ArrayBufferView,
+      algorithm: string | Record<string, unknown>,
+      extractable: boolean,
+      keyUsages: string[]
+    ): Promise<any>;
+    sign(
+      algorithm: string | Record<string, unknown>,
+      key: any,
+      data: ArrayBuffer | ArrayBufferView
+    ): Promise<ArrayBuffer>;
+  };
+};
 
 declare interface Response {
-  readonly ok: boolean;
   readonly status: number;
-  text(): Promise<string>;
+  readonly ok: boolean;
   json(): Promise<any>;
+  text(): Promise<string>;
 }
 
-declare namespace AbortSignal {
-  function timeout(ms: number): any;
-}
+declare const Response: {
+  new (body?: any, init?: any): Response;
+};
 
-declare function setTimeout(callback: (...args: any[]) => void, ms?: number, ...args: any[]): any;
-declare function clearTimeout(id: any): void;
-declare function setInterval(callback: (...args: any[]) => void, ms?: number, ...args: any[]): any;
-declare function clearInterval(id: any): void;
+declare function fetch(input: any, init?: any): Promise<Response>;
+
+declare const AbortSignal: {
+  timeout(ms: number): any;
+};
 
 declare namespace process {
   const env: Record<string, string | undefined>;

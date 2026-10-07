@@ -6,7 +6,6 @@ import {
   InMemoryPublishEventRepository,
   InMemoryAssetRepository,
   InMemoryStorageService,
-  AssetService,
   PublishService,
   extractReferencedAssetIds,
 } from "../src/index.js";
@@ -30,7 +29,6 @@ describe("Publish Pipeline CPU Benchmark", () => {
     const publishEventRepo = new InMemoryPublishEventRepository();
     const assetRepo = new InMemoryAssetRepository();
     const storage = new InMemoryStorageService();
-    const assetService = new AssetService(assetRepo, storage);
     const publishService = new PublishService(
       projectRepo,
       versionRepo,

@@ -13,7 +13,6 @@ import {
   D1PublishEventRepository,
   D1AssetRepository,
   R2StorageService,
-  AssetService,
   PublishService,
   extractReferencedAssetIds,
 } from "@replyiq/core";
@@ -65,7 +64,7 @@ async function main() {
     STAGING_OVERRIDE_ENABLED: string;
   }>({
     configPath,
-    persist: { path: path.resolve(__dirname, "../.wrangler/state/v3") },
+    persist: { path: path.resolve(__dirname, "../../../.wrangler/state/v3") },
   });
 
   try {
@@ -81,7 +80,6 @@ async function main() {
     const publishEventRepo = new D1PublishEventRepository(env.DB);
     const assetRepo = new D1AssetRepository(env.DB);
     const storage = new R2StorageService(env.SITES_BUCKET, env.ASSETS_BUCKET);
-    const assetService = new AssetService(assetRepo, storage);
     const publishService = new PublishService(
       projectRepo,
       versionRepo,

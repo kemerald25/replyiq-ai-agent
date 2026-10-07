@@ -19,24 +19,38 @@ export interface IAgentLogger {
 }
 
 /**
- * Creates a one-way deterministic 64-bit FNV-1a hash of the owner phone number
- * so logs can be correlated without storing or exposing raw PII.
+ * Creates a one-way deterministic HMAC-SHA256 hash of the owner phone number
+ * using a secret key from the environment/config, so logs can be correlated
+ * without exposing raw PII.
+ * Outputs at least 16 hex characters (24 hex characters).
  * Pure and portable across Node.js and Cloudflare Workers runtime.
  */
-export function hashOwnerId(rawIdOrPhone: string): string {
+export async function hashOwnerId(
+  rawIdOrPhone: string,
+  secretKey?: string
+): Promise<string> {
   if (!rawIdOrPhone) return "owner_unknown";
-  let h1 = 0x811c9dc5;
-  let h2 = 0x9e3779b9;
-  for (let i = 0; i < rawIdOrPhone.length; i++) {
-    const c = rawIdOrPhone.charCodeAt(i);
-    h1 ^= c;
-    h1 = Math.imul(h1, 0x01000193);
-    h2 ^= c;
-    h2 = Math.imul(h2, 0x85ebca6b);
-  }
-  const hex1 = (h1 >>> 0).toString(16).padStart(8, "0");
-  const hex2 = (h2 >>> 0).toString(16).padStart(8, "0");
-  return `owner_h_${hex1}${hex2}`.slice(0, 16);
+  const secret =
+    secretKey ||
+    (typeof process !== "undefined" ? process.env?.OWNER_HASH_SECRET : undefined) ||
+    "replyiq-owner-salt-required-secret";
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const signature = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    encoder.encode(rawIdOrPhone)
+  );
+  const hex = Array.from(new Uint8Array(signature))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  return `owner_h_${hex.slice(0, 24)}`;
 }
 
 export class JsonAgentLogger implements IAgentLogger {

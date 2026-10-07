@@ -57,13 +57,17 @@ describe("Prompt Safety & Injection Defenses", () => {
     expect(sanitizeDocumentText("")).toBe("");
   });
 
-  it("summarizes gallery, faq, and about sections correctly", () => {
+  it("summarizes all section types correctly including custom/unknown fallback", () => {
     const richDoc = {
       ...sampleDoc,
       sections: [
         { id: "sec_about", type: "about" as const, title: "Our Story", content: "Family owned since 2018" },
         { id: "sec_gallery", type: "gallery" as const, title: "Photo Gallery", images: [{ assetId: "a1", alt: "Photo 1" }] },
+        { id: "sec_testimonials", type: "testimonials" as const, title: "Reviews", items: [{ id: "t1", quote: "Great service!", author: "Ada" }] },
         { id: "sec_faq", type: "faq" as const, title: "FAQ", items: [{ id: "f1", question: "Do you take cards?", answer: "Yes" }] },
+        { id: "sec_contact", type: "contact" as const, title: "Get In Touch", phone: "+2348012345678" },
+        { id: "sec_footer", type: "footer" as const, copyrightText: "2026 ReplyIQ" },
+        { id: "sec_unknown", type: "custom_blog" as any },
       ],
     };
 
@@ -71,5 +75,9 @@ describe("Prompt Safety & Injection Defenses", () => {
     expect(prompt).toContain("gallery");
     expect(prompt).toContain("faq");
     expect(prompt).toContain("Our Story");
+    expect(prompt).toContain("Reviews");
+    expect(prompt).toContain("Get In Touch");
+    expect(prompt).toContain("footer");
+    expect(prompt).toContain("custom_blog");
   });
 });

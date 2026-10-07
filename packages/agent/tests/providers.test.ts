@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { WorkersAIProvider } from "../src/providers/workers-ai-provider.js";
 import { GeminiProvider } from "../src/providers/gemini-provider.js";
 
@@ -186,5 +186,111 @@ describe("Model Providers (WorkersAIProvider & GeminiProvider)", () => {
         })
       ).rejects.toThrow("Gemini API request failed [403]: API key expired");
     });
+
+    it("identifies rate limit and quota exhaustion errors", async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 429,
+        text: async () => "RESOURCE_EXHAUSTED: Quota exceeded",
+      }) as any;
+
+      const provider = new GeminiProvider({ apiKey: "key-123" });
+      try {
+        await provider.generate({ messages: [{ role: "user", content: "Hi" }] });
+        expect.unreachable();
+      } catch (err: any) {
+        expect(err.isQuotaExceeded).toBe(true);
+        expect(err.isRateLimit).toBe(true);
+      }
+    });
+
+    it("handles Gemini timeout error", async () => {
+      const timeoutErr = new Error("The operation timed out");
+      timeoutErr.name = "TimeoutError";
+      globalThis.fetch = vi.fn().mockRejectedValue(timeoutErr);
+
+      const provider = new GeminiProvider({ apiKey: "key-123" });
+      await expect(
+        provider.generate({ messages: [{ role: "user", content: "Hi" }] })
+      ).rejects.toThrow(/timed out/);
+    });
+
+    it("handles Gemini response without usageMetadata and empty parts", async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          candidates: [{ content: { parts: [{ text: "Hello" }] } }],
+        }),
+      }) as any;
+
+      const provider = new GeminiProvider({ apiKey: "key-123" });
+      const res = await provider.generate({ messages: [{ role: "user", content: "Hi" }] });
+      expect(res.text).toBe("Hello");
+      expect(res.usage.inputTokens).toBe(200);
+    });
+  });
+
+  describe("WorkersAIProvider additional branches", () => {
+    it("uses gatewayUrl when provided", async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          result: { response: "ok" },
+        }),
+      }) as any;
+
+      const provider = new WorkersAIProvider({
+        gatewayUrl: "https://gateway.ai.cloudflare.com/v1/my-slug/my-gw/workers-ai",
+        apiToken: "gw-token",
+      });
+
+      const res = await provider.generate({ messages: [{ role: "user", content: "Hi" }] });
+      expect(res.text).toBe("ok");
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        expect.stringContaining("https://gateway.ai.cloudflare.com/v1/my-slug/my-gw/workers-ai"),
+        expect.anything()
+      );
+    });
+
+    it("handles Workers AI timeout error", async () => {
+      const timeoutErr = new Error("The operation timed out");
+      timeoutErr.name = "TimeoutError";
+      globalThis.fetch = vi.fn().mockRejectedValue(timeoutErr);
+
+      const provider = new WorkersAIProvider({
+        accountId: "acc",
+        apiToken: "tok",
+      });
+
+      await expect(
+        provider.generate({ messages: [{ role: "user", content: "Hi" }] })
+      ).rejects.toThrow(/timed out/);
+    });
+
+    it("handles unparseable tool call arguments safely", async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          result: {
+            tool_calls: [
+              {
+                id: "call_bad",
+                name: "do_something",
+                arguments: "invalid json {",
+              },
+            ],
+          },
+        }),
+      }) as any;
+
+      const provider = new WorkersAIProvider({
+        accountId: "acc",
+        apiToken: "tok",
+      });
+
+      const res = await provider.generate({ messages: [{ role: "user", content: "Hi" }] });
+      expect(res.toolCalls?.[0]?.arguments).toEqual({});
+    });
   });
 });
+

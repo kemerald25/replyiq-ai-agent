@@ -17,6 +17,13 @@ export default tseslint.config(
     },
   },
   {
-    ignores: ["dist/**", "coverage/**", "node_modules/**", "**/dist/**"],
+    files: ["**/tests/**", "**/*.test.ts", "**/scripts/**"],
+    rules: {
+      "@typescript-eslint/no-explicit-any": "off",
+    },
+  },
+  {
+    ignores: ["dist/**", "coverage/**", "node_modules/**", "**/dist/**", "**/*.d.ts", "**/.wrangler/**"],
   },
 );
+

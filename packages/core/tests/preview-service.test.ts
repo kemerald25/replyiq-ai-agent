@@ -1,10 +1,10 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import * as templates from "@replyiq/templates";
 import {
   InMemoryOwnerRepository,
   InMemoryProjectRepository,
   InMemoryVersionRepository,
   InMemoryPreviewRepository,
-  InMemoryAssetRepository,
 } from "../src/adapters/memory/index.js";
 import { PreviewService } from "../src/services/preview-service.js";
 import { SiteDocument } from "@replyiq/schema";
@@ -43,7 +43,6 @@ describe("PreviewService & Unguessable Hashed Tokens", () => {
   let projectRepo: InMemoryProjectRepository;
   let versionRepo: InMemoryVersionRepository;
   let previewRepo: InMemoryPreviewRepository;
-  let assetRepo: InMemoryAssetRepository;
   let previewService: PreviewService;
 
   const OWNER_ID = "owner_preview";
@@ -54,13 +53,11 @@ describe("PreviewService & Unguessable Hashed Tokens", () => {
     projectRepo = new InMemoryProjectRepository();
     versionRepo = new InMemoryVersionRepository(projectRepo);
     previewRepo = new InMemoryPreviewRepository();
-    assetRepo = new InMemoryAssetRepository();
 
     previewService = new PreviewService(
       projectRepo,
       versionRepo,
       previewRepo,
-      assetRepo,
       "replyiq.cv"
     );
 
@@ -147,4 +144,91 @@ describe("PreviewService & Unguessable Hashed Tokens", () => {
     const rendered = await previewService.renderPreview(fakeToken);
     expect(rendered).toBeNull();
   });
+
+  it("throws NotFoundError when creating preview token for non-existent project or version", async () => {
+    await expect(
+      previewService.createPreviewToken("non_existent_project", OWNER_ID, 1, 3600)
+    ).rejects.toThrow();
+
+    await expect(
+      previewService.createPreviewToken(PROJECT_ID, OWNER_ID, 999, 3600)
+    ).rejects.toThrow();
+  });
+
+  it("renders preview with image assets using cdn assetResolver", async () => {
+    const docWithAsset: SiteDocument = {
+      ...testDoc,
+      sections: [
+        {
+          id: "hero-1",
+          type: "hero",
+          heading: "Hero With Asset",
+          image: { assetId: "asset_test_hero", alt: "Test Hero" },
+        },
+      ],
+    };
+
+    await versionRepo.createNextVersion(
+      PROJECT_ID,
+      OWNER_ID,
+      1,
+      docWithAsset,
+      "user"
+    );
+
+    const { token } = await previewService.createPreviewToken(
+      PROJECT_ID,
+      OWNER_ID,
+      2,
+      3600
+    );
+
+    const rendered = await previewService.renderPreview(token);
+    expect(rendered).not.toBeNull();
+    expect(rendered?.html).toContain("https://cdn.replyiq.cv/assets/asset_test_hero");
+  });
+
+  it("returns null when project or version is deleted after token creation", async () => {
+    const { token, tokenHash } = await previewService.createPreviewToken(
+      PROJECT_ID,
+      OWNER_ID,
+      1,
+      3600
+    );
+
+    // Corrupt record pointing to missing version
+    const record = await previewRepo.getByTokenHash(tokenHash);
+    if (record) {
+      record.versionNumber = 9999;
+    }
+    expect(await previewService.renderPreview(token)).toBeNull();
+
+    // Corrupt record pointing to missing project
+    if (record) {
+      record.versionNumber = 1;
+      record.projectId = "missing_proj";
+    }
+    expect(await previewService.renderPreview(token)).toBeNull();
+  });
+
+  it("throws Error when renderSite fails during preview rendering", async () => {
+    const { token } = await previewService.createPreviewToken(
+      PROJECT_ID,
+      OWNER_ID,
+      1,
+      3600
+    );
+
+    const spy = vi.spyOn(templates, "renderSite").mockReturnValueOnce({
+      ok: false,
+      errors: ["Simulated render syntax error"],
+    } as any);
+
+    await expect(previewService.renderPreview(token)).rejects.toThrow(
+      /Preview render failed: Simulated render syntax error/
+    );
+
+    spy.mockRestore();
+  });
 });
+

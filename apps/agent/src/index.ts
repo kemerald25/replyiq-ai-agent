@@ -100,11 +100,12 @@ export default {
           status: 200,
           headers: { "Content-Type": "application/json" },
         });
-      } catch (err: any) {
+      } catch (err: unknown) {
+        const error = err as Error;
         return new Response(
           JSON.stringify({
             error: "Agent processing failure",
-            details: err?.message || String(err),
+            details: error?.message || String(err),
           }),
           {
             status: 500,

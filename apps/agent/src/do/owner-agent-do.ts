@@ -37,7 +37,7 @@ export interface AgentEnv {
   PREVIEW_BASE_URL?: string;
   CF_ACCOUNT_ID?: string;
   CF_API_TOKEN?: string;
-  AI?: any;
+  AI?: { run: (model: string, input: Record<string, unknown>) => Promise<unknown> };
   GEMINI_API_KEY?: string;
   FALLBACK_MODEL?: string;
   MOCK_PROVIDER?: string;
@@ -45,9 +45,10 @@ export interface AgentEnv {
   MAX_MODEL_CALLS_PER_OWNER?: string;
   MAX_FALLBACK_CALLS_PER_OWNER?: string;
   GLOBAL_DAILY_NEURON_CAP?: string;
+  OWNER_HASH_SECRET?: string;
 }
 
-class DurableObjectGlobalUsageStore implements IGlobalUsageStore {
+export class DurableObjectGlobalUsageStore implements IGlobalUsageStore {
   constructor(private namespace: DurableObjectNamespace<GlobalCounterDO>) {}
 
   private getStub() {
@@ -68,6 +69,7 @@ class DurableObjectGlobalUsageStore implements IGlobalUsageStore {
 
 export class OwnerAgentDO extends DurableObject<AgentEnv> {
   private orchestrator: AgentOrchestrator;
+  private messageQueue: Promise<unknown> = Promise.resolve();
 
   constructor(ctx: DurableObjectState, env: AgentEnv) {
     super(ctx, env);
@@ -89,7 +91,7 @@ export class OwnerAgentDO extends DurableObject<AgentEnv> {
 
     // 3. Domain Services
     const baseDomain = (this.env.BASE_DOMAIN || "localhost").toLowerCase();
-    const previewBaseUrl = this.env.PREVIEW_BASE_URL || "http://localhost:8787/preview";
+    const previewBaseUrl = this.env.PREVIEW_BASE_URL;
 
     const publishService = new PublishService(
       projectRepo,
@@ -137,6 +139,11 @@ export class OwnerAgentDO extends DurableObject<AgentEnv> {
     let fallbackProvider: ModelProvider | undefined;
 
     if (this.env.MOCK_PROVIDER === "true") {
+      if (this.env.ENVIRONMENT !== "development") {
+        throw new Error(
+          "Security violation: MOCK_PROVIDER is strictly prohibited outside development environment"
+        );
+      }
       defaultProvider = new MockProvider();
     } else if (this.env.AI) {
       defaultProvider = new WorkersAIProvider({ aiBinding: this.env.AI });
@@ -146,7 +153,11 @@ export class OwnerAgentDO extends DurableObject<AgentEnv> {
         apiToken: this.env.CF_API_TOKEN,
       });
     } else {
-      // Default to MockProvider in local-dev if credentials are not configured
+      if (this.env.ENVIRONMENT !== "development") {
+        throw new Error(
+          "Missing model credentials: Workers AI binding or account credentials required in production"
+        );
+      }
       defaultProvider = new MockProvider();
     }
 
@@ -180,14 +191,23 @@ export class OwnerAgentDO extends DurableObject<AgentEnv> {
       budgetTracker,
       baseDomain,
       previewBaseUrl,
+      environment: (this.env.ENVIRONMENT as "development" | "production" | "staging") || "development",
+      ownerHashSecret: this.env.OWNER_HASH_SECRET,
     });
   }
 
   /**
    * Primary RPC method for processing an incoming message.
+   * Sequential promise queue ensures messages from this owner are processed
+   * strictly in arrival order and never dropped.
    */
   async handleMessage(incoming: IncomingMessage): Promise<AgentResponse> {
-    return this.orchestrator.handleMessage(incoming);
+    const task = this.messageQueue.then(
+      () => this.orchestrator.handleMessage(incoming),
+      () => this.orchestrator.handleMessage(incoming)
+    );
+    this.messageQueue = task.catch(() => {});
+    return task;
   }
 
   /**
@@ -205,10 +225,11 @@ export class OwnerAgentDO extends DurableObject<AgentEnv> {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const error = err as Error;
       return new Response(
         JSON.stringify({
-          error: err?.message || "Internal agent error",
+          error: error?.message || "Internal agent error",
         }),
         {
           status: 500,
