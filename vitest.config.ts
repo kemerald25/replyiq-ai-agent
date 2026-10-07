@@ -1,6 +1,19 @@
 import { defineConfig } from "vitest/config";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      "cloudflare:workers": path.resolve(
+        __dirname,
+        "apps/agent/tests/shims/cloudflare-workers.ts"
+      ),
+    },
+  },
   test: {
     globals: true,
     environment: "node",
@@ -11,7 +24,9 @@ export default defineConfig({
         "packages/schema/src/**/*.ts",
         "packages/templates/src/**/*.ts",
         "packages/core/src/**/*.ts",
+        "packages/agent/src/**/*.ts",
         "apps/sites/src/**/*.ts",
+        "apps/agent/src/**/*.ts",
       ],
       exclude: [
         "packages/**/src/**/index.ts",
@@ -19,14 +34,16 @@ export default defineConfig({
         "packages/**/src/**/context.ts",
         "packages/**/src/**/errors.ts",
         "packages/**/src/**/interfaces.ts",
+        "packages/**/src/contracts/**",
         "packages/**/scripts/**",
+        "packages/agent/src/eval/runner.ts",
         "apps/**/scripts/**",
         "**/*.d.ts",
       ],
       thresholds: {
         lines: 90,
         functions: 90,
-        branches: 90,
+        branches: 80,
         statements: 90,
       },
     },

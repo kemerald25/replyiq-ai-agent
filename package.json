@@ -20,6 +20,10 @@
     "preview": "npm run --workspace=@replyiq/templates preview",
     "sites:dev": "npm run --workspace=@replyiq/sites dev",
     "sites:seed": "npm run --workspace=@replyiq/sites seed",
+    "chat": "npm run --workspace=@replyiq/agent-app chat",
+    "eval": "npm run --workspace=@replyiq/agent eval",
+    "agent:dev": "npm run --workspace=@replyiq/agent-app dev",
+    "agent:seed": "npm run --workspace=@replyiq/agent-app seed",
     "format": "prettier --write \"**/*.{ts,js,json,md}\"",
     "format:check": "prettier --check \"**/*.{ts,js,json,md}\""
   },

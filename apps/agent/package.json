@@ -1,0 +1,20 @@
+{
+  "name": "@replyiq/agent-app",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Cloudflare Worker and Durable Object wrapper for ReplyIQ Agent",
+  "main": "./src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "chat": "tsx scripts/chat.ts",
+    "seed": "tsx scripts/seed-agent.ts"
+  },
+  "dependencies": {
+    "@replyiq/schema": "*",
+    "@replyiq/templates": "*",
+    "@replyiq/core": "*",
+    "@replyiq/agent": "*"
+  }
+}

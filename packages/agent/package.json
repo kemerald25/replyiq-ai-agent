@@ -1,0 +1,25 @@
+{
+  "name": "@replyiq/agent",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Transport-agnostic agent core, state machine, model providers, and command router for ReplyIQ",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "eval": "tsx src/eval/runner.ts"
+  },
+  "dependencies": {
+    "@replyiq/schema": "*",
+    "@replyiq/templates": "*",
+    "@replyiq/core": "*",
+    "zod": "^3.24.2"
+  }
+}

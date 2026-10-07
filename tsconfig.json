@@ -1,4 +1,11 @@
 {
   "files": [],
-  "references": [{ "path": "./packages/schema" }, { "path": "./packages/templates" }]
+  "references": [
+    { "path": "./packages/schema" },
+    { "path": "./packages/templates" },
+    { "path": "./packages/core" },
+    { "path": "./packages/agent" },
+    { "path": "./apps/sites" },
+    { "path": "./apps/agent" }
+  ]
 }

@@ -1,0 +1,52 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "replyiq-agent",
+  "main": "src/index.ts",
+  "compatibility_date": "2024-04-05",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    "BASE_DOMAIN": "localhost",
+    "ENVIRONMENT": "development",
+    "DEV_SECRET": "replyiq-dev-secret-local",
+    "PREVIEW_BASE_URL": "http://localhost:8787/preview",
+    "MOCK_PROVIDER": "true"
+  },
+  "dev": {
+    "port": 8788
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "replyiq-db",
+      "database_id": "local-d1-replyiq"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "SITES_BUCKET",
+      "bucket_name": "replyiq-sites"
+    },
+    {
+      "binding": "ASSETS_BUCKET",
+      "bucket_name": "replyiq-assets"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "OWNER_AGENTS",
+        "class_name": "OwnerAgentDO"
+      },
+      {
+        "name": "GLOBAL_COUNTER",
+        "class_name": "GlobalCounterDO"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["OwnerAgentDO", "GlobalCounterDO"]
+    }
+  ]
+}

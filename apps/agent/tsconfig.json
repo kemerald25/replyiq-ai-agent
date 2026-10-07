@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src"
+  },
+  "references": [
+    { "path": "../../packages/schema" },
+    { "path": "../../packages/templates" },
+    { "path": "../../packages/core" },
+    { "path": "../../packages/agent" }
+  ],
+  "include": ["src/**/*"],
+  "exclude": ["dist", "node_modules", "tests", "scripts"]
+}
