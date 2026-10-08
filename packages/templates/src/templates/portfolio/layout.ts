@@ -59,17 +59,18 @@ export function renderPortfolioLayout(doc: SiteDocument, ctx: RenderContext): Sa
   // Render sections
   const renderedSections = doc.sections.map((section) => renderSection(section, ctx));
 
-  // Floating WhatsApp button
-  const whatsappUrl = buildWhatsAppLink(doc.contact.whatsappNumber, doc.contact.defaultMessage);
-  const floatingWhatsappHtml = html`<a
-    href="${safeHref(whatsappUrl)}"
+  // Floating WhatsApp button (only rendered if contact number exists and is confirmed)
+  const floatingWhatsappHtml = doc.contact.whatsappNumber
+    ? html`<a
+    href="${safeHref(buildWhatsAppLink(doc.contact.whatsappNumber, doc.contact.defaultMessage))}"
     class="floating-whatsapp"
     target="_blank"
     rel="noopener noreferrer"
     aria-label="Chat with ${doc.metadata.title} on WhatsApp"
   >
     ${raw(WHATSAPP_SVG_ICON)}
-  </a>`;
+  </a>`
+    : "";
 
   return html`
     <!-- Skip to main content link for keyboard & screen reader accessibility -->

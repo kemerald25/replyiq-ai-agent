@@ -38,7 +38,7 @@ export type SiteMetadata = z.infer<typeof SiteMetadataSchema>;
  * Global site contact settings (primary WhatsApp contact for visitor interaction).
  */
 export const SiteContactSchema = z.object({
-  whatsappNumber: PhoneNumberSchema,
+  whatsappNumber: z.literal("").or(PhoneNumberSchema).default(""),
   defaultMessage: safeTextSchema({ minLength: 1, maxLength: 200, allowMultiline: true }).optional(),
 });
 export type SiteContact = z.infer<typeof SiteContactSchema>;

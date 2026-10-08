@@ -104,7 +104,7 @@ describe("ReplyIQ Agent Worker & Dev Message Endpoint", () => {
       const res = await worker.fetch(req, env);
       expect(res.status).toBe(400);
       const data = (await res.json()) as any;
-      expect(data.error).toContain("Invalid owner phone number");
+      expect(data.error).toContain("Invalid owner identity");
     });
 
     it("normalizes phone and routes to OwnerAgentDO in development", async () => {

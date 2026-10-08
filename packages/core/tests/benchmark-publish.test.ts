@@ -77,8 +77,10 @@ describe("Publish Pipeline CPU Benchmark", () => {
       "Benchmark stress test sample publish"
     );
 
-    // Warm-up run
-    await publishService.publish(project.id, ownerId, 1);
+    // Warm-up runs to ensure V8 JIT compilation and IC caches are warm
+    for (let w = 0; w < 3; w++) {
+      await publishService.publish(project.id, ownerId, 1);
+    }
 
     // Measured iterations
     const iterations = 10;

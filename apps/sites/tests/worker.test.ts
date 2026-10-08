@@ -553,6 +553,101 @@ describe("Cloudflare Sites Worker", () => {
       expect(await res.text()).toContain("Staging Amaka Luxe Path");
     });
 
+    it("serves preview via /preview/:token path on staging workers.dev", async () => {
+      env.ENVIRONMENT = "staging";
+      env.STAGING_OVERRIDE_ENABLED = "true";
+      mockDb.projects.set("p_stage_prev", {
+        id: "p_stage_prev",
+        slug: "amaka-stage",
+        status: "draft",
+        published_version: null,
+        deleted_at: null,
+      });
+      const rawToken = "pt_stage_token_123456789";
+      const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(rawToken));
+      const tokenHash = Array.from(new Uint8Array(buf))
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+      mockDb.previewTokens.set(tokenHash, {
+        project_id: "p_stage_prev",
+        version_number: 1,
+        expires_at: Date.now() + 3600_000,
+      });
+
+      const req = new Request(`https://demo.workers.dev/preview/${rawToken}`);
+      const res = await worker.fetch(req, env);
+      expect(res.status).toBe(200);
+      const text = await res.text();
+      expect(text).toContain("Preview");
+    });
+
+    it("serves preview via /p/:token and ?preview=:token on staging workers.dev", async () => {
+      env.ENVIRONMENT = "staging";
+      env.STAGING_OVERRIDE_ENABLED = "true";
+      mockDb.projects.set("p_stage_p", {
+        id: "p_stage_p",
+        slug: "amaka-p",
+        status: "draft",
+        published_version: null,
+        deleted_at: null,
+      });
+      const rawToken = "pt_stage_token_p987654321";
+      const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(rawToken));
+      const tokenHash = Array.from(new Uint8Array(buf))
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+      mockDb.previewTokens.set(tokenHash, {
+        project_id: "p_stage_p",
+        version_number: 1,
+        expires_at: Date.now() + 3600_000,
+      });
+
+      // Test /p/:token
+      const reqPath = new Request(`https://demo.workers.dev/p/${rawToken}`);
+      const resPath = await worker.fetch(reqPath, env);
+      expect(resPath.status).toBe(200);
+
+      // Test ?preview=:token
+      const reqQuery = new Request(`https://demo.workers.dev/?preview=${rawToken}`);
+      const resQuery = await worker.fetch(reqQuery, env);
+      expect(resQuery.status).toBe(200);
+    });
+
+    it("serves assets via /assets/:key on staging workers.dev", async () => {
+      env.ENVIRONMENT = "staging";
+      env.STAGING_OVERRIDE_ENABLED = "true";
+      mockAssetsBucket.objects.set("stage-logo.png", {
+        data: "binary-image-data",
+        contentType: "image/png",
+      });
+
+      const req = new Request("https://demo.workers.dev/assets/stage-logo.png");
+      const res = await worker.fetch(req, env);
+      expect(res.status).toBe(200);
+      expect(res.headers.get("Content-Type")).toBe("image/png");
+    });
+
+    it("enables staging overrides by default when ENVIRONMENT=staging without explicit flag", async () => {
+      env.ENVIRONMENT = "staging";
+      env.STAGING_OVERRIDE_ENABLED = undefined;
+      mockDb.projects.set("p_stage_def", {
+        id: "p_stage_def",
+        slug: "default-staging",
+        status: "live",
+        published_version: 1,
+        deleted_at: null,
+      });
+      mockSitesBucket.objects.set("sites/p_stage_def/1.html", {
+        data: "<html><body>Default Staging Live</body></html>",
+        contentType: "text/html; charset=utf-8",
+      });
+
+      const req = new Request("https://demo.workers.dev/site/default-staging");
+      const res = await worker.fetch(req, env);
+      expect(res.status).toBe(200);
+      expect(await res.text()).toContain("Default Staging Live");
+    });
+
     it("does not enable staging overrides when flag is disabled", async () => {
       env.ENVIRONMENT = "staging";
       env.STAGING_OVERRIDE_ENABLED = "false";

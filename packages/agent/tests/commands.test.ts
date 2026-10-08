@@ -251,5 +251,81 @@ describe("Deterministic Command Router & Orchestrator Commands", () => {
       });
       expect(resUndo.replies[0]?.text).toContain("No active project found to undo");
     });
+
+    it("proves previews still build correctly when PREVIEW_BASE_URL is unset", async () => {
+      // 1. Unset previewBaseUrl in development environment
+      const devOrchestrator = new AgentOrchestrator({
+        ownerRepo,
+        projectRepo,
+        versionRepo,
+        publishService,
+        versionService,
+        previewService,
+        stateStore,
+        defaultProvider: mockProvider,
+        baseDomain: "localhost",
+        environment: "development",
+        previewBaseUrl: undefined,
+      });
+
+      const devPreview = devOrchestrator.buildPreviewUrl("test_token_123");
+      expect(devPreview).toBe("http://preview.localhost:8787/test_token_123");
+      expect(devPreview).not.toContain("undefined");
+
+      // 2. Unset previewBaseUrl in production environment
+      const prodOrchestrator = new AgentOrchestrator({
+        ownerRepo,
+        projectRepo,
+        versionRepo,
+        publishService,
+        versionService,
+        previewService,
+        stateStore,
+        defaultProvider: mockProvider,
+        baseDomain: "replyiq.cv",
+        environment: "production",
+        previewBaseUrl: undefined,
+      });
+
+      const prodPreview = prodOrchestrator.buildPreviewUrl("test_token_456");
+      expect(prodPreview).toBe("https://preview.replyiq.cv/test_token_456");
+      expect(prodPreview).not.toContain("undefined");
+
+      const prodSite = prodOrchestrator.buildSiteUrl("amaka-hair");
+      expect(prodSite).toBe("https://amaka-hair.replyiq.cv");
+
+      // 3. Unset previewBaseUrl in staging environment on workers.dev (path routing)
+      const stagingOrchestrator = new AgentOrchestrator({
+        ownerRepo,
+        projectRepo,
+        versionRepo,
+        publishService,
+        versionService,
+        previewService,
+        stateStore,
+        defaultProvider: mockProvider,
+        baseDomain: "replyiq-sites.staging.workers.dev",
+        environment: "staging",
+        previewBaseUrl: undefined,
+      });
+
+      const stagingPreview = stagingOrchestrator.buildPreviewUrl("test_token_789");
+      expect(stagingPreview).toBe("https://replyiq-sites.staging.workers.dev/preview/test_token_789");
+      expect(stagingPreview).not.toContain("undefined");
+
+      const stagingSite = stagingOrchestrator.buildSiteUrl("amaka-hair");
+      expect(stagingSite).toBe("https://replyiq-sites.staging.workers.dev/site/amaka-hair");
+
+      // 4. PREVIEW command builds valid preview URL when PREVIEW_BASE_URL is unset
+      const msgRes = await devOrchestrator.handleMessage({
+        ownerPhone: OWNER_PHONE,
+        messageId: "msg_prev_unset_test",
+        text: "PREVIEW",
+      });
+      expect(msgRes.replies[0]?.previewUrl).toBeDefined();
+      expect(msgRes.replies[0]?.previewUrl).toContain("http://preview.localhost:8787/");
+      expect(msgRes.replies[0]?.previewUrl).not.toContain("undefined");
+    });
   });
 });
+

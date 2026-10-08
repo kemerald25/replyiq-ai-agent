@@ -335,6 +335,62 @@ describe("renderSite Engine", () => {
         expect(res.html).not.toContain('<nav class="site-nav"');
       }
     });
+
+    it("omits floating WhatsApp button when contact number is not provided", () => {
+      const docNoPhone: any = {
+        schemaVersion: 1,
+        subdomain: "no-phone",
+        template: "portfolio",
+        metadata: { title: "No Phone Site", description: "Testing omitted whatsapp" },
+        theme: { palette: "lagos-emerald", font: "system-sans", mode: "light" },
+        contact: { whatsappNumber: "" },
+        sections: [
+          { id: "hero-1", type: "hero", heading: "Heading Hero" },
+          { id: "footer-1", type: "footer", copyrightText: "2026" },
+        ],
+      };
+
+      const res = renderSite(docNoPhone, {
+        mode: "live",
+        canonicalUrl: "https://no-phone.replyiq.cv",
+        assetResolver: mockResolver,
+        showBranding: false,
+      });
+
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.html).not.toContain('class="floating-whatsapp"');
+        expect(res.html).not.toContain("wa.me");
+      }
+    });
+
+    it("renders floating WhatsApp button when contact number is present", () => {
+      const docWithPhone: any = {
+        schemaVersion: 1,
+        subdomain: "with-phone",
+        template: "portfolio",
+        metadata: { title: "Phone Site", description: "Testing present whatsapp" },
+        theme: { palette: "lagos-emerald", font: "system-sans", mode: "light" },
+        contact: { whatsappNumber: "+2348012345678" },
+        sections: [
+          { id: "hero-1", type: "hero", heading: "Heading Hero" },
+          { id: "footer-1", type: "footer", copyrightText: "2026" },
+        ],
+      };
+
+      const res = renderSite(docWithPhone, {
+        mode: "live",
+        canonicalUrl: "https://with-phone.replyiq.cv",
+        assetResolver: mockResolver,
+        showBranding: false,
+      });
+
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.html).toContain('class="floating-whatsapp"');
+        expect(res.html).toContain("wa.me/2348012345678");
+      }
+    });
   });
 });
 

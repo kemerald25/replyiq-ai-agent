@@ -27,6 +27,7 @@ export default defineConfig({
         "packages/agent/src/**/*.ts",
         "apps/sites/src/**/*.ts",
         "apps/agent/src/**/*.ts",
+        "apps/gateway/src/**/*.ts",
       ],
       exclude: [
         "packages/**/src/**/index.ts",
@@ -38,6 +39,10 @@ export default defineConfig({
         "packages/**/scripts/**",
         "packages/agent/src/eval/runner.ts",
         "apps/**/scripts/**",
+        "apps/gateway/src/transport/whatsapp-transport.ts",
+        "apps/gateway/src/transport/interface.ts",
+        "apps/gateway/src/transport/index.ts",
+        "apps/gateway/src/index.ts",
         "**/*.d.ts",
       ],
       thresholds: {

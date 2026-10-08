@@ -6,6 +6,7 @@ export * from "./common/text-safety.js";
 export * from "./common/asset.js";
 export * from "./common/urls.js";
 export * from "./common/phone.js";
+export * from "./common/identity.js";
 export * from "./common/slug.js";
 
 // Theme

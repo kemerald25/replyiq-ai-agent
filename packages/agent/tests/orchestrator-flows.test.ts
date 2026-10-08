@@ -479,4 +479,46 @@ describe("Orchestrator Fallback, Budget, and Edge Flows", () => {
     const updatedSt = await stateStore.getState(OWNER_ID);
     expect(updatedSt.conversationHistory.length).toBeLessThanOrEqual(20);
   });
+
+  it("supports both normalized E.164 phone and WhatsApp LID identity forms", async () => {
+    const orchestrator = new AgentOrchestrator({
+      ownerRepo,
+      projectRepo,
+      versionRepo,
+      publishService,
+      versionService,
+      previewService,
+      stateStore,
+      defaultProvider: new MockProvider(),
+    });
+
+    // 1. E.164 Phone Identity
+    const phoneRes = await orchestrator.handleMessage({
+      ownerKey: "+2348099998888",
+      messageId: "msg_phone_ident",
+      text: "NEW Phone Business",
+    });
+    expect(phoneRes.commandExecuted).toBe("NEW");
+    const phoneOwner = await ownerRepo.getByIdentityKey("+2348099998888");
+    expect(phoneOwner).not.toBeNull();
+    expect(phoneOwner?.phoneNumber).toBe("+2348099998888");
+
+    // 2. WhatsApp LID Identity
+    const lidRes = await orchestrator.handleMessage({
+      ownerKey: "lid:1234567890abcdef",
+      messageId: "msg_lid_ident",
+      text: "NEW LID Business",
+    });
+    expect(lidRes.commandExecuted).toBe("NEW");
+    const lidOwner = await ownerRepo.getByIdentityKey("lid:1234567890abcdef");
+    expect(lidOwner).not.toBeNull();
+    expect(lidOwner?.identityKey).toBe("lid:1234567890abcdef");
+    expect(lidOwner?.phoneNumber).toBeNull();
+
+    // Check project created by LID owner has empty contact number initially
+    const lidProjects = await projectRepo.listByOwner(lidOwner!.id);
+    expect(lidProjects.length).toBe(1);
+    const lidDocVer = await versionRepo.get(lidProjects[0]!.id, 1);
+    expect(lidDocVer?.document.contact.whatsappNumber).toBe("");
+  });
 });

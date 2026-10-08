@@ -5,7 +5,8 @@ export interface MediaReference {
 }
 
 export interface IncomingMessage {
-  ownerPhone: string;
+  ownerKey?: string;
+  ownerPhone?: string;
   messageId: string;
   text: string;
   mediaReferences?: MediaReference[];

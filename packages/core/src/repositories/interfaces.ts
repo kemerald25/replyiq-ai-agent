@@ -12,9 +12,12 @@ import {
 
 export interface OwnerRepository {
   getById(id: string): Promise<Owner | null>;
+  getByIdentityKey(identityKey: string): Promise<Owner | null>;
   getByPhoneNumber(phoneNumber: string): Promise<Owner | null>;
-  create(owner: Omit<Owner, "createdAt" | "updatedAt">): Promise<Owner>;
-  update(id: string, updates: Partial<Pick<Owner, "displayName">>): Promise<Owner>;
+  create(
+    owner: Omit<Owner, "createdAt" | "updatedAt" | "identityKey"> & { identityKey?: string }
+  ): Promise<Owner>;
+  update(id: string, updates: Partial<Pick<Owner, "displayName" | "phoneNumber">>): Promise<Owner>;
 }
 
 export interface ProjectRepository {

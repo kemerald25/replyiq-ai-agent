@@ -98,12 +98,30 @@ export class D1OwnerRepository implements OwnerRepository {
     const row = await this.db
       .prepare("SELECT * FROM owners WHERE id = ?")
       .bind(id)
-      .first<{ id: string; phone_number: string; display_name: string | null; created_at: number; updated_at: number }>();
+      .first<{ id: string; identity_key?: string | null; phone_number: string | null; display_name: string | null; created_at: number; updated_at: number }>();
 
     if (!row) return null;
     return {
       id: row.id,
-      phoneNumber: row.phone_number,
+      identityKey: row.identity_key || row.phone_number || row.id,
+      phoneNumber: row.phone_number || null,
+      displayName: row.display_name,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
+
+  async getByIdentityKey(identityKey: string): Promise<Owner | null> {
+    const row = await this.db
+      .prepare("SELECT * FROM owners WHERE identity_key = ? OR phone_number = ?")
+      .bind(identityKey, identityKey)
+      .first<{ id: string; identity_key?: string | null; phone_number: string | null; display_name: string | null; created_at: number; updated_at: number }>();
+
+    if (!row) return null;
+    return {
+      id: row.id,
+      identityKey: row.identity_key || row.phone_number || row.id,
+      phoneNumber: row.phone_number || null,
       displayName: row.display_name,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
@@ -112,50 +130,66 @@ export class D1OwnerRepository implements OwnerRepository {
 
   async getByPhoneNumber(phoneNumber: string): Promise<Owner | null> {
     const row = await this.db
-      .prepare("SELECT * FROM owners WHERE phone_number = ?")
-      .bind(phoneNumber)
-      .first<{ id: string; phone_number: string; display_name: string | null; created_at: number; updated_at: number }>();
+      .prepare("SELECT * FROM owners WHERE phone_number = ? OR identity_key = ?")
+      .bind(phoneNumber, phoneNumber)
+      .first<{ id: string; identity_key?: string | null; phone_number: string | null; display_name: string | null; created_at: number; updated_at: number }>();
 
     if (!row) return null;
     return {
       id: row.id,
-      phoneNumber: row.phone_number,
+      identityKey: row.identity_key || row.phone_number || row.id,
+      phoneNumber: row.phone_number || null,
       displayName: row.display_name,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
   }
 
-  async create(owner: Omit<Owner, "createdAt" | "updatedAt">): Promise<Owner> {
+  async create(
+    owner: Omit<Owner, "createdAt" | "updatedAt" | "identityKey"> & { identityKey?: string }
+  ): Promise<Owner> {
     const now = Date.now();
-    await this.db
-      .prepare("INSERT INTO owners (id, phone_number, display_name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)")
-      .bind(owner.id, owner.phoneNumber, owner.displayName || null, now, now)
-      .run();
+    const identityKey = owner.identityKey || owner.phoneNumber || owner.id;
+    try {
+      await this.db
+        .prepare("INSERT INTO owners (id, identity_key, phone_number, display_name, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)")
+        .bind(owner.id, identityKey, owner.phoneNumber || null, owner.displayName || null, now, now)
+        .run();
+    } catch {
+      // Fallback for unmigrated schema where identity_key column doesn't exist yet
+      await this.db
+        .prepare("INSERT INTO owners (id, phone_number, display_name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)")
+        .bind(owner.id, owner.phoneNumber || identityKey, owner.displayName || null, now, now)
+        .run();
+    }
 
     return {
       ...owner,
+      identityKey,
+      phoneNumber: owner.phoneNumber || null,
       displayName: owner.displayName || null,
       createdAt: now,
       updatedAt: now,
     };
   }
 
-  async update(id: string, updates: Partial<Pick<Owner, "displayName">>): Promise<Owner> {
+  async update(id: string, updates: Partial<Pick<Owner, "displayName" | "phoneNumber">>): Promise<Owner> {
     const existing = await this.getById(id);
     if (!existing) throw new NotFoundError("Owner", id);
 
     const now = Date.now();
     const newName = updates.displayName !== undefined ? updates.displayName : existing.displayName;
+    const newPhone = updates.phoneNumber !== undefined ? updates.phoneNumber : existing.phoneNumber;
 
     await this.db
-      .prepare("UPDATE owners SET display_name = ?, updated_at = ? WHERE id = ?")
-      .bind(newName, now, id)
+      .prepare("UPDATE owners SET display_name = ?, phone_number = ?, updated_at = ? WHERE id = ?")
+      .bind(newName, newPhone, now, id)
       .run();
 
     return {
       ...existing,
       displayName: newName,
+      phoneNumber: newPhone,
       updatedAt: now,
     };
   }

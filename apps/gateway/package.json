@@ -1,0 +1,28 @@
+{
+  "name": "@replyiq/gateway",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "WhatsApp gateway and secure bridge for ReplyIQ",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "start": "tsx src/index.ts",
+    "dev": "tsx watch src/index.ts",
+    "simulate": "tsx scripts/simulate.ts"
+  },
+  "dependencies": {
+    "@replyiq/agent": "*",
+    "@replyiq/schema": "*",
+    "puppeteer": "24.4.0",
+    "qrcode-terminal": "0.12.0",
+    "sharp": "0.33.5",
+    "whatsapp-web.js": "1.26.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.9",
+    "@types/qrcode-terminal": "0.12.2",
+    "@types/sharp": "0.31.1"
+  }
+}

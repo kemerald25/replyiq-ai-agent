@@ -30,8 +30,15 @@ const SLUG_COOLDOWN_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 export class InMemoryOwnerRepository implements OwnerRepository {
   public owners = new Map<string, Owner>();
   public phoneToId = new Map<string, string>();
+  public identityKeyToId = new Map<string, string>();
 
   async getById(id: string): Promise<Owner | null> {
+    return this.owners.get(id) || null;
+  }
+
+  async getByIdentityKey(identityKey: string): Promise<Owner | null> {
+    const id = this.identityKeyToId.get(identityKey) || this.phoneToId.get(identityKey);
+    if (!id) return null;
     return this.owners.get(id) || null;
   }
 
@@ -41,19 +48,28 @@ export class InMemoryOwnerRepository implements OwnerRepository {
     return this.owners.get(id) || null;
   }
 
-  async create(owner: Omit<Owner, "createdAt" | "updatedAt">): Promise<Owner> {
+  async create(
+    owner: Omit<Owner, "createdAt" | "updatedAt" | "identityKey"> & { identityKey?: string }
+  ): Promise<Owner> {
     const now = Date.now();
+    const identityKey = owner.identityKey || owner.phoneNumber || owner.id;
     const record: Owner = {
       ...owner,
+      identityKey,
+      phoneNumber: owner.phoneNumber ?? null,
+      displayName: owner.displayName ?? null,
       createdAt: now,
       updatedAt: now,
     };
     this.owners.set(record.id, record);
-    this.phoneToId.set(record.phoneNumber, record.id);
+    this.identityKeyToId.set(identityKey, record.id);
+    if (record.phoneNumber) {
+      this.phoneToId.set(record.phoneNumber, record.id);
+    }
     return record;
   }
 
-  async update(id: string, updates: Partial<Pick<Owner, "displayName">>): Promise<Owner> {
+  async update(id: string, updates: Partial<Pick<Owner, "displayName" | "phoneNumber">>): Promise<Owner> {
     const existing = this.owners.get(id);
     if (!existing) throw new NotFoundError("Owner", id);
     const updated: Owner = {
@@ -62,6 +78,9 @@ export class InMemoryOwnerRepository implements OwnerRepository {
       updatedAt: Date.now(),
     };
     this.owners.set(id, updated);
+    if (updated.phoneNumber) {
+      this.phoneToId.set(updated.phoneNumber, id);
+    }
     return updated;
   }
 }

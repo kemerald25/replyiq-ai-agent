@@ -54,19 +54,57 @@ describe("Real SQLite & D1 Adapter Integration Tests", () => {
   });
 
   describe("Migrations and Schema Constraints", () => {
-    it("enforces unique phone numbers for owners", async () => {
+    it("enforces unique identity keys for owners", async () => {
       await ownerRepo.create({
         id: "owner_1",
+        identityKey: "+2348012345678",
         phoneNumber: "+2348012345678",
         displayName: "First Owner",
       });
 
-      // Inserting duplicate phone number must fail SQLite UNIQUE constraint
+      // Inserting duplicate identity key must fail SQLite UNIQUE constraint
       await expect(
         ownerRepo.create({
           id: "owner_2",
+          identityKey: "+2348012345678",
           phoneNumber: "+2348012345678",
           displayName: "Second Owner",
+        })
+      ).rejects.toThrow();
+    });
+
+    it("supports both phone numbers and lid identifiers as identity keys", async () => {
+      // 1. Phone number identity
+      const phoneOwner = await ownerRepo.create({
+        id: "owner_phone",
+        identityKey: "+2348012345678",
+        phoneNumber: "+2348012345678",
+        displayName: "Phone Owner",
+      });
+      expect(phoneOwner.identityKey).toBe("+2348012345678");
+      expect(phoneOwner.phoneNumber).toBe("+2348012345678");
+
+      const fetchedByPhoneKey = await ownerRepo.getByIdentityKey("+2348012345678");
+      expect(fetchedByPhoneKey?.id).toBe("owner_phone");
+
+      // 2. LID identity (no phone number yet)
+      const lidOwner = await ownerRepo.create({
+        id: "owner_lid",
+        identityKey: "lid:98765432101234",
+        phoneNumber: null,
+        displayName: "LID Owner",
+      });
+      expect(lidOwner.identityKey).toBe("lid:98765432101234");
+      expect(lidOwner.phoneNumber).toBeNull();
+
+      const fetchedByLid = await ownerRepo.getByIdentityKey("lid:98765432101234");
+      expect(fetchedByLid?.id).toBe("owner_lid");
+
+      // Duplicate LID fails unique constraint
+      await expect(
+        ownerRepo.create({
+          id: "owner_lid_dup",
+          identityKey: "lid:98765432101234",
         })
       ).rejects.toThrow();
     });

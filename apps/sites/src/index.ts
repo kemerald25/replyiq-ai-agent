@@ -52,7 +52,8 @@ export default {
     const allowLoopbackIp = isDevelopment && baseDomain === "localhost";
     const stagingOverrideEnabled =
       isDevelopment ||
-      (env.ENVIRONMENT === "staging" && env.STAGING_OVERRIDE_ENABLED === "true");
+      (env.ENVIRONMENT === "staging" && env.STAGING_OVERRIDE_ENABLED !== "false") ||
+      env.STAGING_OVERRIDE_ENABLED === "true";
 
     const parsedUrl = new URL(request.url);
     const hostRoute = parseHost(request.url, {
@@ -203,9 +204,20 @@ export default {
       });
     }
 
-    // 6. Preview Route (preview.<baseDomain>/<token>)
+    // 6. Preview Route (preview.<baseDomain>/<token> or staging /preview/<token>, /p/<token>)
     if (hostRoute.type === "preview") {
-      const token = parsedUrl.pathname.replace(/^\/+/, "").split("/")[0] || "";
+      let token = "";
+      if (parsedUrl.pathname.startsWith("/preview/")) {
+        token = parsedUrl.pathname.slice("/preview/".length).replace(/\/+$/, "").split("/")[0] || "";
+      } else if (parsedUrl.pathname.startsWith("/p/")) {
+        token = parsedUrl.pathname.slice("/p/".length).replace(/\/+$/, "").split("/")[0] || "";
+      } else {
+        token = parsedUrl.pathname.replace(/^\/+/, "").replace(/\/+$/, "").split("/")[0] || "";
+      }
+      if (!token && parsedUrl.searchParams) {
+        token = parsedUrl.searchParams.get("preview") || parsedUrl.searchParams.get("token") || "";
+      }
+
       if (!token || token.length < 16) {
         const html = renderNotFoundPage(baseDomain);
         return new Response(request.method === "HEAD" ? null : html, {
@@ -256,16 +268,21 @@ export default {
         return new Response("Corrupted preview document", { status: 500 });
       }
 
-      const cdnBase = `https://cdn.${baseDomain}`;
+      const isStaging = stagingOverrideEnabled || baseDomain.endsWith("workers.dev");
+      const cdnBase = isStaging ? `${parsedUrl.protocol}//${parsedUrl.host}` : `https://cdn.${baseDomain}`;
       const assetResolver = (id: string) => ({
         url: `${cdnBase}/assets/${id}`,
         width: 800,
         height: 600,
       });
 
+      const canonicalUrl = isStaging
+        ? `${parsedUrl.protocol}//${parsedUrl.host}/site/${row.slug}`
+        : `https://${row.slug}.${baseDomain}`;
+
       const renderResult = renderSite(doc, {
         mode: "preview",
-        canonicalUrl: `https://${row.slug}.${baseDomain}`,
+        canonicalUrl,
         assetResolver,
         showBranding: true,
       });

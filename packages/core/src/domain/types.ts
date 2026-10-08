@@ -7,7 +7,8 @@ export type AssetMimeType = "image/webp" | "image/jpeg" | "image/png";
 
 export interface Owner {
   id: string;
-  phoneNumber: string; // Normalized E.164
+  identityKey: string; // Normalized E.164 phone or "lid:<id>"
+  phoneNumber: string | null; // Confirmed contact phone number, if known
   displayName: string | null;
   createdAt: number;
   updatedAt: number;

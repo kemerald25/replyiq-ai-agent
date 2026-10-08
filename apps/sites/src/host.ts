@@ -78,9 +78,25 @@ export function parseHost(requestUrl: string, options: ParseHostOptions): HostRo
   bypassSet.add(`www.${baseDomain}`);
 
   // 2. Bypass hosts (pass through untouched)
-  if (bypassSet.has(hostname)) {
-    // If staging override enabled and query or path parameter is supplied on apex/dev
+  if (bypassSet.has(hostname) || hostname.endsWith(".workers.dev")) {
+    // If staging override enabled: allow path and query routing
     if (options.stagingOverrideEnabled) {
+      // 1. Preview route (/preview/:token, /p/:token, or ?preview=:token)
+      if (
+        pathname.startsWith("/preview/") ||
+        pathname.startsWith("/p/") ||
+        searchParams?.has("preview") ||
+        searchParams?.has("token")
+      ) {
+        return { type: "preview" };
+      }
+
+      // 2. Asset route (/assets/:key)
+      if (pathname.startsWith("/assets/")) {
+        return { type: "cdn" };
+      }
+
+      // 3. Site route (/site/:slug or ?site=:slug)
       const querySite = searchParams?.get("site");
       if (querySite) {
         const slug = querySite.toLowerCase();
@@ -96,25 +112,6 @@ export function parseHost(requestUrl: string, options: ParseHostOptions): HostRo
       }
     }
 
-    return { type: "bypass" };
-  }
-
-  // Check for workers.dev staging host
-  if (hostname.endsWith(".workers.dev")) {
-    if (options.stagingOverrideEnabled) {
-      const querySite = searchParams?.get("site");
-      if (querySite) {
-        const slug = querySite.toLowerCase();
-        if (RESERVED_SLUGS.has(slug)) return { type: "reserved_slug", slug };
-        return { type: "site", slug };
-      }
-      const pathMatch = pathname.match(/^\/site\/([a-zA-Z0-9_-]+)/);
-      if (pathMatch && pathMatch[1]) {
-        const slug = pathMatch[1].toLowerCase();
-        if (RESERVED_SLUGS.has(slug)) return { type: "reserved_slug", slug };
-        return { type: "site", slug };
-      }
-    }
     return { type: "bypass" };
   }
 

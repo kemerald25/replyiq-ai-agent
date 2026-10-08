@@ -9,7 +9,37 @@ export class GlobalCounterDO extends DurableObject<Record<string, unknown>> {
         neurons REAL NOT NULL,
         updated_at INTEGER NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS gateway_heartbeat (
+        id TEXT PRIMARY KEY,
+        gateway_version TEXT NOT NULL,
+        transport_state TEXT NOT NULL,
+        last_seen INTEGER NOT NULL
+      );
     `);
+  }
+
+  async recordHeartbeat(data: { gatewayVersion: string; transportState: string; lastSeen?: number }): Promise<void> {
+    const lastSeen = data.lastSeen ?? Date.now();
+    this.ctx.storage.sql.exec(
+      `INSERT INTO gateway_heartbeat (id, gateway_version, transport_state, last_seen)
+       VALUES ('primary', ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         gateway_version = excluded.gateway_version,
+         transport_state = excluded.transport_state,
+         last_seen = excluded.last_seen`,
+      data.gatewayVersion,
+      data.transportState,
+      lastSeen
+    );
+  }
+
+  async getHeartbeat(): Promise<{ gatewayVersion: string; transportState: string; lastSeen: number } | null> {
+    const cursor = this.ctx.storage.sql.exec(
+      `SELECT gateway_version as gatewayVersion, transport_state as transportState, last_seen as lastSeen
+       FROM gateway_heartbeat WHERE id = 'primary'`
+    );
+    const row = cursor.toArray()[0] as { gatewayVersion: string; transportState: string; lastSeen: number } | undefined;
+    return row || null;
   }
 
   async getDailyNeurons(dateKey: string): Promise<number> {

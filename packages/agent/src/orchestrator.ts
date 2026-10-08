@@ -7,7 +7,7 @@ import {
   PreviewService,
   Project,
 } from "@replyiq/core";
-import { normalizePhone, SiteDocument } from "@replyiq/schema";
+import { parseOwnerKey, SiteDocument } from "@replyiq/schema";
 import {
   IncomingMessage,
   AgentResponse,
@@ -88,6 +88,10 @@ export class AgentOrchestrator {
   }
 
   buildSiteUrl(slug: string): string {
+    const isStaging = this.environment === "staging" || this.baseDomain.endsWith(".workers.dev");
+    if (isStaging) {
+      return `https://${this.baseDomain}/site/${slug}`;
+    }
     const isDev = this.environment === "development" || this.baseDomain === "localhost";
     if (isDev) {
       return `http://${slug}.localhost:8787`;
@@ -99,6 +103,10 @@ export class AgentOrchestrator {
     if (this.previewBaseUrl) {
       return `${this.previewBaseUrl.replace(/\/+$/, "")}/${token}`;
     }
+    const isStaging = this.environment === "staging" || this.baseDomain.endsWith(".workers.dev");
+    if (isStaging) {
+      return `https://${this.baseDomain}/preview/${token}`;
+    }
     const isDev = this.environment === "development" || this.baseDomain === "localhost";
     if (isDev) {
       return `http://preview.localhost:8787/${token}`;
@@ -107,50 +115,46 @@ export class AgentOrchestrator {
   }
 
   async handleMessage(incoming: IncomingMessage): Promise<AgentResponse> {
-    const rawPhone = incoming.ownerPhone;
-    const phoneNorm = normalizePhone(rawPhone);
-    const normalizedPhone = phoneNorm.valid && phoneNorm.e164 ? phoneNorm.e164 : rawPhone;
+    const rawKey = incoming.ownerKey || incoming.ownerPhone || "";
+    const parsedKey = parseOwnerKey(rawKey);
+    const ownerKey = parsedKey.valid ? parsedKey.identity.key : rawKey;
     const messageId = incoming.messageId;
-    const dedupKey = `${normalizedPhone}:${messageId}`;
+    const dedupKey = `${ownerKey}:${messageId}`;
 
-    const ownerHash = await hashOwnerId(normalizedPhone, this.ownerHashSecret);
-
-    this.logger.log({
-      level: "info",
-      event: "message_received",
-      ownerHash,
-      messageId,
-      textLength: incoming.text.length,
-      timestamp: Date.now(),
-    });
-
-    // 1. Idempotency: check if message was already completed
-    const existing = await this.stateStore.getProcessedResponse(normalizedPhone, messageId);
-    if (existing) {
-      this.logger.log({
-        level: "info",
-        event: "idempotency_hit",
-        ownerHash,
-        messageId,
-        timestamp: Date.now(),
-      });
-      return existing;
-    }
-
-    // 2. Concurrency: if an identical message is currently in-flight, await and return its result
+    // 1. Fast in-flight deduplication check
     const inFlightPromise = this.inFlight.get(dedupKey);
     if (inFlightPromise) {
       return inFlightPromise;
     }
 
-    // 3. Acquire sequential lock for this owner
-    const releaseLock = await this.stateStore.acquireLock(normalizedPhone);
+    // 2. Acquire sequential lock synchronously to preserve strict FIFO arrival order
+    const releaseLock = await this.stateStore.acquireLock(ownerKey);
 
     const executionPromise = (async () => {
       try {
-        // Double-check store after acquiring lock
-        const alreadyDone = await this.stateStore.getProcessedResponse(normalizedPhone, messageId);
-        if (alreadyDone) return alreadyDone;
+        const ownerHash = await hashOwnerId(ownerKey, this.ownerHashSecret);
+
+        this.logger.log({
+          level: "info",
+          event: "message_received",
+          ownerHash,
+          messageId,
+          textLength: incoming.text.length,
+          timestamp: Date.now(),
+        });
+
+        // 3. Idempotency: check if message was already completed
+        const existing = await this.stateStore.getProcessedResponse(ownerKey, messageId);
+        if (existing) {
+          this.logger.log({
+            level: "info",
+            event: "idempotency_hit",
+            ownerHash,
+            messageId,
+            timestamp: Date.now(),
+          });
+          return existing;
+        }
 
         // Turn timeout race
         let timer: ReturnType<typeof setTimeout> | undefined;
@@ -165,7 +169,7 @@ export class AgentOrchestrator {
         let response: AgentResponse;
         try {
           response = await Promise.race([
-            this.processMessageInternal(normalizedPhone, incoming),
+            this.processMessageInternal(ownerKey, incoming),
             turnTimeoutPromise,
           ]);
         } catch (turnErr: unknown) {
@@ -196,7 +200,7 @@ export class AgentOrchestrator {
           clearTimeout(timer);
         }
 
-        await this.stateStore.recordProcessedMessage(normalizedPhone, messageId, response);
+        await this.stateStore.recordProcessedMessage(ownerKey, messageId, response);
 
         this.logger.log({
           level: "info",
@@ -222,20 +226,29 @@ export class AgentOrchestrator {
   }
 
   private async processMessageInternal(
-    ownerPhone: string,
+    ownerKey: string,
     incoming: IncomingMessage
   ): Promise<AgentResponse> {
     const text = incoming.text.trim();
     const timestamp = Date.now();
 
     // Ensure owner exists or create owner
-    let owner = await this.ownerRepo.getByPhoneNumber(ownerPhone);
+    let owner = await this.ownerRepo.getByIdentityKey(ownerKey);
     if (!owner) {
-      const ownerId = `owner_${ownerPhone.replace(/\+/g, "")}`;
+      owner = await this.ownerRepo.getByPhoneNumber(ownerKey);
+    }
+    if (!owner) {
+      const parsed = parseOwnerKey(ownerKey);
+      const isPhone = parsed.valid && parsed.identity.type === "phone";
+      const cleanId = ownerKey.replace(/[^a-zA-Z0-9]/g, "");
+      const ownerId = `owner_${cleanId}`;
       owner = await this.ownerRepo.create({
         id: ownerId,
-        phoneNumber: ownerPhone,
-        displayName: `Business Owner (${ownerPhone.slice(-4)})`,
+        identityKey: ownerKey,
+        phoneNumber: isPhone ? ownerKey : null,
+        displayName: isPhone
+          ? `Business Owner (${ownerKey.slice(-4)})`
+          : `WhatsApp User (${ownerKey.slice(-6)})`,
       });
     }
 
@@ -599,7 +612,7 @@ export class AgentOrchestrator {
             activeProject.currentVersion,
             3600
           );
-          previewUrl = `${this.previewBaseUrl}/${token.token}`;
+          previewUrl = this.buildPreviewUrl(token.token);
         }
 
         const projectListText = projects
@@ -688,6 +701,8 @@ export class AgentOrchestrator {
           .replace(/^-|-$/g, "");
         const slug = (rawSlug.length >= 3 ? rawSlug : `site-${rawSlug}`).slice(0, 30);
 
+        const owner = await this.ownerRepo.getById(ownerId);
+
         const initialDoc: SiteDocument = {
           schemaVersion: 1,
           subdomain: slug,
@@ -704,7 +719,7 @@ export class AgentOrchestrator {
             mode: "light",
           },
           contact: {
-            whatsappNumber: incoming.ownerPhone,
+            whatsappNumber: owner?.phoneNumber || "",
           },
           sections: [
             {

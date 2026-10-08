@@ -46,6 +46,8 @@ export interface AgentEnv {
   MAX_FALLBACK_CALLS_PER_OWNER?: string;
   GLOBAL_DAILY_NEURON_CAP?: string;
   OWNER_HASH_SECRET?: string;
+  GATEWAY_SECRET_PRIMARY?: string;
+  GATEWAY_SECRET_SECONDARY?: string;
 }
 
 export class DurableObjectGlobalUsageStore implements IGlobalUsageStore {

@@ -3,7 +3,8 @@
 
 CREATE TABLE IF NOT EXISTS owners (
   id TEXT PRIMARY KEY,
-  phone_number TEXT NOT NULL UNIQUE,
+  identity_key TEXT NOT NULL UNIQUE,
+  phone_number TEXT,
   display_name TEXT,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL

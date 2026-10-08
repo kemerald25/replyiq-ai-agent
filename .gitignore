@@ -10,3 +10,6 @@ coverage/
 .dev.vars
 .dev.vars.*
 .wrangler/
+.wwebjs_auth/
+.wwebjs_cache/
+.data/

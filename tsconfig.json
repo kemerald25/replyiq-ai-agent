@@ -6,6 +6,7 @@
     { "path": "./packages/core" },
     { "path": "./packages/agent" },
     { "path": "./apps/sites" },
-    { "path": "./apps/agent" }
+    { "path": "./apps/agent" },
+    { "path": "./apps/gateway" }
   ]
 }
