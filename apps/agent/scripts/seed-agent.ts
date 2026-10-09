@@ -35,9 +35,8 @@ async function runMigrationsIfPending(db: any, migrationSql: string): Promise<vo
 async function main() {
   console.log("Seeding ReplyIQ Agent database...");
   const configPath = path.resolve(__dirname, "../wrangler.jsonc");
-  const migrationPath = path.resolve(__dirname, "../../../packages/core/migrations/0001_initial.sql");
-
-  const migrationSql = await fs.readFile(migrationPath, "utf-8");
+  const migrationDir = path.resolve(__dirname, "../../../packages/core/migrations");
+  const migrationFiles = ["0001_initial.sql", "0002_owner_identity.sql", "0003_telegram_identity.sql"];
 
   const proxy = await getPlatformProxy<{
     DB: D1Database;
@@ -49,7 +48,16 @@ async function main() {
   });
 
   try {
-    await runMigrationsIfPending(proxy.env.DB, migrationSql);
+    for (const file of migrationFiles) {
+      try {
+        const sql = await fs.readFile(path.join(migrationDir, file), "utf-8");
+        await runMigrationsIfPending(proxy.env.DB, sql);
+      } catch (err: any) {
+        if (!err.message?.includes("ENOENT")) {
+          console.warn(`Migration ${file} skipped or already applied:`, err.message);
+        }
+      }
+    }
 
     const ownerRepo = new D1OwnerRepository(proxy.env.DB);
     const projectRepo = new D1ProjectRepository(proxy.env.DB);
@@ -62,10 +70,25 @@ async function main() {
     if (!owner) {
       owner = await ownerRepo.create({
         id: ownerId,
+        identityKey: phone,
         phoneNumber: phone,
         displayName: "Amaka Hair Studio",
       });
       console.log(`Created test owner: ${owner.id} (${owner.phoneNumber})`);
+    }
+
+    // Seed Telegram owner (phone number starts null, WhatsApp CTA hidden until configured)
+    const tgKey = "tg:123456789";
+    const tgOwnerId = "owner_tg123456789";
+    let tgOwner = await ownerRepo.getByIdentityKey(tgKey);
+    if (!tgOwner) {
+      tgOwner = await ownerRepo.create({
+        id: tgOwnerId,
+        identityKey: tgKey,
+        phoneNumber: null,
+        displayName: "Telegram Demo Business",
+      });
+      console.log(`Created test telegram owner: ${tgOwner.id} (${tgOwner.identityKey})`);
     }
 
     // Seed test hero asset if not already present

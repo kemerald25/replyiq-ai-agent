@@ -16,7 +16,7 @@ export type CommandType =
  */
 export function parseCommand(text: string): CommandType {
   const trimmed = text.trim();
-  const lower = trimmed.toLowerCase();
+  const lower = (trimmed.startsWith("/") ? trimmed.slice(1).trim() : trimmed).toLowerCase();
 
   // 1. Number selection: single digit or small number
   if (/^\d{1,2}$/.test(trimmed)) {
@@ -25,7 +25,7 @@ export function parseCommand(text: string): CommandType {
   }
 
   // 2. Exact command keywords
-  if (lower === "menu") return { type: "MENU" };
+  if (lower === "menu" || lower === "start") return { type: "MENU" };
   if (lower === "help" || lower === "?") return { type: "HELP" };
   if (lower === "stop" || lower === "unsubscribe") return { type: "STOP" };
   if (lower === "undo" || lower === "revert") return { type: "UNDO" };
@@ -42,7 +42,8 @@ export function parseCommand(text: string): CommandType {
 
   // 3. New project creation
   if (lower.startsWith("new ") || lower === "new") {
-    const name = trimmed.slice(3).trim();
+    const rawTrimmed = trimmed.startsWith("/") ? trimmed.slice(1).trim() : trimmed;
+    const name = rawTrimmed.slice(3).trim();
     return { type: "NEW", name: name || undefined };
   }
 

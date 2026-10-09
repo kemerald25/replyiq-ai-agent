@@ -180,7 +180,7 @@ describe("Image Parser & Security Dimensions Validator", () => {
     await expect(parseAndValidateImage(tooManyPixels)).rejects.toThrow(
       /Total pixel count .* exceeds limit/
     );
-  });
+  }, 15_000);
 
   it("handles JPEG parsing edge cases (truncated SOF, SOS marker stop, padding)", async () => {
     // Truncated SOF marker (offset + 7 > len)

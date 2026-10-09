@@ -18,4 +18,5 @@ export * from "./providers/gemini-provider.js";
 export * from "./eval/cases.js";
 export * from "./eval/runner.js";
 export * from "./logging/logger.js";
+export * from "./formatting/splitter.js";
 export * from "./orchestrator.js";

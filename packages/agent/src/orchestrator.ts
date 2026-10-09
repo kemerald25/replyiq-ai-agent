@@ -242,13 +242,17 @@ export class AgentOrchestrator {
       const isPhone = parsed.valid && parsed.identity.type === "phone";
       const cleanId = ownerKey.replace(/[^a-zA-Z0-9]/g, "");
       const ownerId = `owner_${cleanId}`;
+      let displayName = `WhatsApp User (${ownerKey.slice(-6)})`;
+      if (isPhone) {
+        displayName = `Business Owner (${ownerKey.slice(-4)})`;
+      } else if (parsed.valid && parsed.identity.type === "telegram") {
+        displayName = `Telegram User (${parsed.identity.telegramId.slice(-4)})`;
+      }
       owner = await this.ownerRepo.create({
         id: ownerId,
         identityKey: ownerKey,
         phoneNumber: isPhone ? ownerKey : null,
-        displayName: isPhone
-          ? `Business Owner (${ownerKey.slice(-4)})`
-          : `WhatsApp User (${ownerKey.slice(-6)})`,
+        displayName,
       });
     }
 

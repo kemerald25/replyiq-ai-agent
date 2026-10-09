@@ -10,6 +10,8 @@ import { OwnerAgentDO, AgentEnv } from "./do/owner-agent-do.js";
 import { GlobalCounterDO } from "./do/global-counter-do.js";
 import { verifyGatewaySignature } from "./auth.js";
 import { globalRateLimiter } from "./rate-limiter.js";
+import { verifyTelegramSecretToken } from "./telegram/auth.js";
+import { TelegramUpdate } from "./telegram/types.js";
 
 export { OwnerAgentDO, GlobalCounterDO };
 
@@ -59,6 +61,101 @@ export default {
           headers: { "Content-Type": "application/json" },
         }
       );
+    }
+
+    // Telegram Bot API Webhook Endpoint
+    const expectedWebhookPath = env.TELEGRAM_WEBHOOK_PATH_SUFFIX
+      ? `/telegram/webhook/${env.TELEGRAM_WEBHOOK_PATH_SUFFIX}`
+      : "/telegram/webhook";
+
+    if (
+      url.pathname === expectedWebhookPath ||
+      url.pathname === "/telegram/webhook"
+    ) {
+      if (request.method !== "POST") {
+        return new Response("Method Not Allowed", { status: 405 });
+      }
+
+      if (env.TELEGRAM_ENABLED === "false") {
+        return new Response(JSON.stringify({ error: "Telegram integration is disabled" }), {
+          status: 403,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      const rateLimit = env.TELEGRAM_RATE_LIMIT_PER_MINUTE
+        ? parseInt(env.TELEGRAM_RATE_LIMIT_PER_MINUTE, 10)
+        : 120;
+      if (!globalRateLimiter.allow("telegram:webhook", rateLimit, 60_000)) {
+        return new Response(JSON.stringify({ error: "Rate limit exceeded" }), {
+          status: 429,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      if (env.TELEGRAM_SECRET_TOKEN) {
+        const headerSecret = request.headers.get("X-Telegram-Bot-Api-Secret-Token");
+        const isAuth = await verifyTelegramSecretToken(headerSecret, env.TELEGRAM_SECRET_TOKEN);
+        if (!isAuth) {
+          return new Response(JSON.stringify({ error: "Unauthorized: Invalid Telegram secret token" }), {
+            status: 401,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      }
+
+      const { body, sizeError } = await readBodyWithLimit(request, MAX_BODY_SIZE_MESSAGE);
+      if (sizeError) {
+        return new Response(JSON.stringify({ error: "Payload Too Large: max 100 KB" }), {
+          status: 413,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      let update: TelegramUpdate;
+      try {
+        update = JSON.parse(body) as TelegramUpdate;
+      } catch {
+        return new Response(JSON.stringify({ error: "Invalid JSON body" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      if (!update || typeof update.update_id !== "number") {
+        return new Response(JSON.stringify({ error: "Missing update_id" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      const fromUser = update.message?.from || update.callback_query?.from;
+      if (!fromUser || !fromUser.id) {
+        return new Response(JSON.stringify({ ok: true, ignored: true }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      const ownerKey = `tg:${fromUser.id}`;
+      try {
+        const doId = env.OWNER_AGENTS.idFromName(ownerKey);
+        const stub = env.OWNER_AGENTS.get(doId);
+        await stub.enqueueTelegramUpdate(update);
+
+        return new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      } catch (err: unknown) {
+        return new Response(
+          JSON.stringify({ error: "Failed to enqueue update", details: (err as Error)?.message }),
+          {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          }
+        );
+      }
     }
 
     // Authenticated /v1/health check
@@ -274,6 +371,7 @@ export default {
           }
           if (!owner) {
             const isPhone = parsedKey.identity.type === "phone";
+            const isTg = parsedKey.identity.type === "telegram";
             const ownerId = `owner_${validatedKey.replace(/[^a-zA-Z0-9]/g, "")}`;
             owner = await ownerRepo.create({
               id: ownerId,
@@ -281,6 +379,8 @@ export default {
               phoneNumber: isPhone ? validatedKey : null,
               displayName: isPhone
                 ? `Business Owner (${validatedKey.slice(-4)})`
+                : isTg
+                ? `Telegram User (${validatedKey.slice(-4)})`
                 : `WhatsApp User (${validatedKey.slice(-6)})`,
             });
           }

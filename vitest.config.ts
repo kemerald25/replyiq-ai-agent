@@ -12,6 +12,10 @@ export default defineConfig({
         __dirname,
         "apps/agent/tests/shims/cloudflare-workers.ts"
       ),
+      "@replyiq/schema": path.resolve(__dirname, "packages/schema/src/index.ts"),
+      "@replyiq/templates": path.resolve(__dirname, "packages/templates/src/index.ts"),
+      "@replyiq/core": path.resolve(__dirname, "packages/core/src/index.ts"),
+      "@replyiq/agent": path.resolve(__dirname, "packages/agent/src/index.ts"),
     },
   },
   test: {
@@ -32,6 +36,7 @@ export default defineConfig({
       exclude: [
         "packages/**/src/**/index.ts",
         "packages/**/src/**/types.ts",
+        "apps/**/src/**/types.ts",
         "packages/**/src/**/context.ts",
         "packages/**/src/**/errors.ts",
         "packages/**/src/**/interfaces.ts",

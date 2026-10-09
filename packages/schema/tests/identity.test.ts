@@ -78,6 +78,38 @@ describe("Owner Identity & Key Validation (parseOwnerKey)", () => {
     });
   });
 
+  describe("Telegram Numeric Identities", () => {
+    it("parses valid numeric Telegram identity", () => {
+      const res = parseOwnerKey("tg:1234567890");
+      expect(res.valid).toBe(true);
+      if (res.valid && res.identity.type === "telegram") {
+        expect(res.identity.type).toBe("telegram");
+        expect(res.identity.key).toBe("tg:1234567890");
+        expect(res.identity.telegramId).toBe("1234567890");
+      }
+    });
+
+    it("rejects empty Telegram id after tg: prefix", () => {
+      const res = parseOwnerKey("tg:");
+      expect(res.valid).toBe(false);
+      if (!res.valid) {
+        expect(res.error).toMatch(/cannot be empty/);
+      }
+    });
+
+    it("rejects non-numeric Telegram identifiers", () => {
+      expect(parseOwnerKey("tg:abc").valid).toBe(false);
+      expect(parseOwnerKey("tg:user_123").valid).toBe(false);
+      expect(parseOwnerKey("tg:-12345").valid).toBe(false);
+      expect(parseOwnerKey("tg:123.45").valid).toBe(false);
+    });
+
+    it("rejects Telegram identifiers exceeding 32 digits", () => {
+      const tooLong = `tg:${"1".repeat(33)}`;
+      expect(parseOwnerKey(tooLong).valid).toBe(false);
+    });
+  });
+
   describe("Invalid inputs & Schema validation", () => {
     it("rejects non-string and empty inputs", () => {
       expect(parseOwnerKey(null).valid).toBe(false);
